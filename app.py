@@ -25,7 +25,7 @@ partecipanti = [
     "Nicola", "Ciccio", "Elvira", "Matilde", "Lorenzo", "Santa", "Cristina"
 ]
 
-tab_spese, tab_itinerario = st.tabs(["💸 Spese & Debiti", "🗺️ Itinerario"])
+tab_spese, tab_bilanci, tab_itinerario = st.tabs(["💸 Spese", "⚖️ Bilanci", "🗺️ Itinerario"])
 
 with tab_spese:
     st.header("Aggiungi una nuova spesa")
@@ -76,3 +76,46 @@ with tab_spese:
 with tab_itinerario:
     st.header("Logistica")
     st.info("Qui metteremo le tappe del viaggio e i link utili.")
+
+with tab_bilanci:
+    st.header("⚖️ Situazione Saldi")
+
+    if not df.empty:
+        # 1. Inizializziamo il saldo netto di tutti a zero
+        saldi = {persona: 0.0 for persona in partecipanti}
+
+        # 2. Iteriamo su ogni riga del dataframe (ogni spesa)
+        for index, riga in df.iterrows():
+            pagante = riga["Pagante"]
+            importo = float(riga["Importo"])
+            
+            # Trasformiamo la stringa "Beniamino, Han, Luca" in una vera lista Python
+            lista_debitori = [nome.strip() for nome in riga["Partecipanti"].split(",")]
+            
+            # Divisione alla romana (per ora)
+            if len(lista_debitori) > 0:
+                quota = importo / len(lista_debitori)
+
+                # Il pagante va in positivo (ha un credito)
+                saldi[pagante] += importo
+                
+                # Tutti i partecipanti vanno in negativo (hanno un debito)
+                for debitore in lista_debitori:
+                    if debitore in saldi:
+                        saldi[debitore] -= quota
+
+        # 3. Mostriamo i saldi netti a schermo
+        st.subheader("Chi deve avere e chi deve dare:")
+        for persona, saldo in saldi.items():
+            # Arrotondiamo per evitare problemi con i decimali di Python
+            saldo_arrotondato = round(saldo, 2)
+            
+            if saldo_arrotondato > 0:
+                st.success(f"🟩 **{persona}** deve ricevere {saldo_arrotondato}€")
+            elif saldo_arrotondato < 0:
+                st.error(f"🟥 **{persona}** deve dare {abs(saldo_arrotondato)}€")
+        
+        # Qui sotto, nel prossimo step, implementeremo il "Semplifica Debiti"
+        
+    else:
+        st.info("Nessuna spesa registrata finora.")
