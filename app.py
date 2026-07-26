@@ -39,8 +39,7 @@ except Exception as e:
 
 # La lista del gruppo
 partecipanti = [
-    "Michele", "Luisa", "Beniamino", "Han", "Yu", "Luca", 
-    "Nicola", "Ciccio", "Elvira", "Matilde", "Lorenzo", "Santa", "Cristina"
+    "Santa", "Luisa", "Elvira", "Guglfr", "Lorenzo", "Gallo", "Manu"
 ]
 
 tab_spese, tab_bilanci, tab_itinerario = st.tabs(["💸 Spese", "⚖️ Bilanci", "🗺️ Itinerario"])
@@ -193,7 +192,7 @@ with tab_bilanci:
                 st.error(f"🟥 **{persona}** è in debito di {abs(saldo_arrotondato)}€")
 
         st.divider()
-        
+
         # 2. Algoritmo "Semplifica Debiti"
         st.subheader("2. Semplifica Debiti (Chi paga chi)")
         
