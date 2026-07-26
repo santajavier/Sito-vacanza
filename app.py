@@ -39,7 +39,7 @@ except Exception as e:
 
 # La lista del gruppo
 partecipanti = [
-    "Santa", "Luisa", "Elvira", "Guglfr", "Lorenzo", "Gallo", "Manu"
+    "Santa", "Luisa", "Elvira", "Guglfr", "Lorenzo", "Gallo", "Manu", "Isu"
 ]
 
 tab_spese, tab_bilanci, tab_itinerario = st.tabs(["💸 Spese", "⚖️ Bilanci", "🗺️ Itinerario"])
