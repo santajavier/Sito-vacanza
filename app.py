@@ -12,6 +12,24 @@ st.title("✈️ La Nostra Vacanza")
 url_foglio = "https://docs.google.com/spreadsheets/d/1vAycXFovunoRVwow8JX8bd5WhHfZmirP0ZxxfRI8kes/edit?hl=it&gid=0#gid=0"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# --- SISTEMA DI LOGIN ---
+if "autenticato" not in st.session_state:
+    st.session_state["autenticato"] = False
+
+if not st.session_state["autenticato"]:
+    st.subheader("🔒 Accesso Riservato")
+    password_inserita = st.text_input("Inserisci la password per entrare", type="password")
+    
+    if st.button("Entra"):
+        # Sostituisci 'Vacanze2026' con la password che vuoi dare al gruppo
+        if password_inserita == "Vacanze2026": 
+            st.session_state["autenticato"] = True
+            st.rerun()
+        else:
+            st.error("Password errata!")
+    st.stop() # Questo comando impedisce a Python di leggere il resto del codice se non sei loggato!
+# ------------------------
+
 # 2. Lettura dei dati (leggiamo le prime 5 colonne)
 try:
     df = conn.read(spreadsheet=url_foglio, usecols=[0, 1, 2, 3, 4])
