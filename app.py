@@ -151,20 +151,48 @@ with tab_bilanci:
     st.header("⚖️ Situazione Saldi e Rimborsi")
 
     if not df.empty:
-        # 1. Calcolo dei saldi netti (la logica che avevamo già)
+        # 1. Inizializziamo i saldi a zero
         saldi = {persona: 0.0 for persona in partecipanti}
 
         for index, riga in df.iterrows():
             pagante = riga["Pagante"]
             importo = float(riga["Importo"])
-            lista_debitori = [nome.strip() for nome in riga["Partecipanti"].split(",")]
+            partecipanti_str = str(riga["Partecipanti"])
             
-            if len(lista_debitori) > 0:
-                quota = importo / len(lista_debitori)
+            # Il pagante va in positivo dell'intero importo sborsato
+            if pagante in saldi:
                 saldi[pagante] += importo
-                for debitore in lista_debitori:
-                    if debitore in saldi:
-                        saldi[debitore] -= quota
+            
+            # Controlliamo se è una spesa con quote personalizzate (c'è il ':')
+            if ":" in partecipanti_str:
+                # Es: "Michele:15.5, Luisa:10.0"
+                voci = partecipanti_str.split(",")
+                for voce in voci:
+                    if ":" in voce:
+                        nome_debitore, quota_str = voce.split(":")
+                        nome_debitore = nome_debitore.strip()
+                        quota = float(quota_str)
+                        if nome_debitore in saldi:
+                            saldi[nome_debitore] -= quota
+            else:
+                # Es: "Michele, Luisa" (Divisione alla romana)
+                lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                if len(lista_debitori) > 0:
+                    quota = importo / len(lista_debitori)
+                    for debitore in lista_debitori:
+                        if debitore in saldi:
+                            saldi[debitore] -= quota
+
+        # Mostriamo il resoconto netto
+        st.subheader("1. Bilancio Netto")
+        for persona, saldo in saldi.items():
+            saldo_arrotondato = round(saldo, 2)
+            if saldo_arrotondato > 0.01:
+                st.success(f"🟩 **{persona}** è in credito di {saldo_arrotondato}€")
+            elif saldo_arrotondato < -0.01:
+                st.error(f"🟥 **{persona}** è in debito di {abs(saldo_arrotondato)}€")
+
+        st.divider()
 
         # Mostriamo il resoconto netto
         st.subheader("1. Bilancio Netto")
