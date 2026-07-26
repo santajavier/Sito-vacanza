@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
+import plotly.express as px
 
 # Impostazioni della pagina
 st.set_page_config(page_title="Gestione Vacanza", page_icon="✈️", layout="centered")
@@ -32,7 +33,7 @@ if not st.session_state["autenticato"]:
 
 # 2. Lettura dei dati (leggiamo le prime 5 colonne)
 try:
-    df = conn.read(spreadsheet=url_foglio, usecols=[0, 1, 2, 3, 4])
+    df = conn.read(spreadsheet=url_foglio, usecols=[0, 1, 2, 3, 4, 5])
 except Exception as e:
     st.error("Errore di connessione al database. Controlla il link e i permessi!")
     st.stop()
@@ -56,8 +57,20 @@ with tab_spese:
         importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, format="%.2f")
     with col2:
         causale = st.text_input("Causale (es. Benzina, Cena)")
+        
+        # --- NUOVA LOGICA CATEGORIE ---
+        # Leggiamo le categorie già usate dal foglio (se esistono) ignorando le celle vuote
+        categorie_esistenti = list(df["Categoria"].dropna().unique()) if "Categoria" in df.columns else []
+        scelta_cat = st.selectbox("Macrocategoria", ["➕ Aggiungi nuova..."] + categorie_esistenti)
+        
+        if scelta_cat == "➕ Aggiungi nuova...":
+            categoria = st.text_input("Scrivi la nuova categoria (es. Carburante, Cibo)")
+        else:
+            categoria = scelta_cat
+        # ------------------------------
+        
         diviso_tra = st.multiselect("Coinvolti nella spesa", partecipanti, default=partecipanti)
-    
+
     divisione_uguale = st.checkbox("Dividi in parti uguali", value=True)
     
     quote_personalizzate = {}
@@ -95,7 +108,8 @@ with tab_spese:
                 "Pagante": pagante,
                 "Importo": importo,
                 "Causale": causale,
-                "Partecipanti": stringa_partecipanti
+                "Partecipanti": stringa_partecipanti,
+                "Categoria": categoria
             }])
             
             df_aggiornato = nuova_spesa if df.empty else pd.concat([df, nuova_spesa], ignore_index=True)
@@ -255,7 +269,6 @@ with tab_statistiche:
     st.header("📊 Statistiche Spese")
     
     if not df.empty:
-        # Assicuriamoci che gli importi siano letti come numeri
         df["Importo"] = pd.to_numeric(df["Importo"])
         
         # 1. Metrica: Totale Speso
@@ -264,20 +277,30 @@ with tab_statistiche:
         
         st.divider()
         
-        # 2. Grafico a barre: Chi ha anticipato di più?
+        # 2. Grafico a barre con COLORI DIVERSI
         st.subheader("🏆 Chi ha anticipato più soldi?")
-        # Raggruppiamo i dati per Pagante e sommiamo gli importi
         spese_per_pagante = df.groupby("Pagante")["Importo"].sum().reset_index()
-        # Impostiamo il nome come indice per il grafico
-        spese_per_pagante.set_index("Pagante", inplace=True)
-        # Mostriamo il grafico nativo
-        st.bar_chart(spese_per_pagante, color="#ff4757")
+        # Per avere i colori diversi, indichiamo a Streamlit che il 'color' varia in base al 'Pagante'
+        st.bar_chart(spese_per_pagante, x="Pagante", y="Importo", color="Pagante")
         
-        # 3. (Opzionale) Possiamo fare anche un grafico per Causale!
+        # 3. Grafico a TORTA per le Categorie
         st.subheader("🛍️ In cosa stiamo spendendo?")
-        spese_per_causale = df.groupby("Causale")["Importo"].sum().reset_index()
-        spese_per_causale.set_index("Causale", inplace=True)
-        st.bar_chart(spese_per_causale, color="#1e90ff")
-        
+        if "Categoria" in df.columns:
+            # Riempiamo eventuali buchi delle vecchie spese (prima dell'aggiornamento)
+            df["Categoria"] = df["Categoria"].fillna("Altro")
+            
+            spese_per_categoria = df.groupby("Categoria")["Importo"].sum().reset_index()
+            
+            # Creiamo il grafico a torta (con un buco al centro per renderlo a "ciambella", molto più moderno)
+            fig = px.pie(spese_per_categoria, values='Importo', names='Categoria', hole=0.4)
+            
+            # Rimuoviamo lo sfondo bianco per adattarlo al tema chiaro/scuro del cellulare
+            fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            
+            # Mostriamo il grafico su Streamlit
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Aggiungi una spesa con una Categoria per vedere il grafico a torta!")
+            
     else:
         st.info("Inizia ad aggiungere qualche spesa per vedere i grafici!")
