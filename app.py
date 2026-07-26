@@ -4,13 +4,19 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import plotly.express as px
 
-# Impostazioni della pagina
-st.set_page_config(page_title="Gestione Vacanza", page_icon="✈️", layout="centered")
-st.title("✈️ La Nostra Vacanza")
+# 1. Apriamo la cassaforte e leggiamo i dati
+config = st.secrets["config"]
+titolo_app = config["TITOLO_APP"]
+url_foglio = config["URL_FOGLIO"]
+password_accesso = config["PASSWORD_ACCESSO"]
+master_password = config["MASTER_PASSWORD"]
+partecipanti = config["PARTECIPANTI"]
 
-# 1. Connessione al database (Google Sheets)
-# Sostituisci l'URL qui sotto con il link vero del tuo foglio Google!
-url_foglio = "https://docs.google.com/spreadsheets/d/1vAycXFovunoRVwow8JX8bd5WhHfZmirP0ZxxfRI8kes/edit?hl=it&gid=0#gid=0"
+# 2. Impostazioni pagina usando il titolo preso dalla cassaforte
+st.set_page_config(page_title=titolo_app, page_icon="✈️", layout="centered")
+st.title(titolo_app)
+
+# 3. Connessione al database usando l'url preso dalla cassaforte
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- SISTEMA DI LOGIN ---
@@ -23,7 +29,7 @@ if not st.session_state["autenticato"]:
     
     if st.button("Entra"):
         # Sostituisci 'Vacanze2026' con la password che vuoi dare al gruppo
-        if password_inserita == "Vacanze2026": 
+        if password_inserita == password_accesso: 
             st.session_state["autenticato"] = True
             st.rerun()
         else:
@@ -38,10 +44,6 @@ except Exception as e:
     st.error("Errore di connessione al database. Controlla il link e i permessi!")
     st.stop()
 
-# La lista del gruppo
-partecipanti = [
-    "Santa", "Luisa", "Elvira", "Guglfr", "Lorenzo", "Gallo", "Manu", "Isu"
-]
 
 tab_spese, tab_bilanci, tab_statistiche = st.tabs(["💸 Spese", "⚖️ Bilanci", "📊 Statistiche"])
 
@@ -141,7 +143,7 @@ with tab_spese:
             st.write("")
             if st.button("Elimina Definitivamente"):
                 # Sostituisci 'Admin123' con la TUA password segreta
-                if pwd_master == "Admin123":
+                if pwd_master == master_password:
                     # Estraiamo l'indice della riga dalla stringa selezionata
                     indice_riga = int(spesa_da_eliminare.split(" ")[1])
                     
