@@ -42,7 +42,7 @@ partecipanti = [
     "Santa", "Luisa", "Elvira", "Guglfr", "Lorenzo", "Gallo", "Manu", "Isu"
 ]
 
-tab_spese, tab_bilanci, tab_itinerario = st.tabs(["💸 Spese", "⚖️ Bilanci", "🗺️ Itinerario"])
+tab_spese, tab_bilanci, tab_statistiche = st.tabs(["💸 Spese", "⚖️ Bilanci", "📊 Statistiche"])
 
 with tab_spese:
     st.header("Aggiungi una nuova spesa")
@@ -142,10 +142,6 @@ with tab_spese:
                 else:
                     st.error("❌ Master Password errata!")
 
-with tab_itinerario:
-    st.header("Logistica")
-    st.info("Qui metteremo le tappe del viaggio e i link utili.")
-
 with tab_bilanci:
     st.header("⚖️ Situazione Saldi e Rimborsi")
 
@@ -174,13 +170,25 @@ with tab_bilanci:
                         if nome_debitore in saldi:
                             saldi[nome_debitore] -= quota
             else:
-                # Es: "Michele, Luisa" (Divisione alla romana)
+                # Es: "Michele, Luisa" (Divisione alla romana corretta al centesimo)
                 lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
-                if len(lista_debitori) > 0:
-                    quota = importo / len(lista_debitori)
-                    for debitore in lista_debitori:
+                num_debitori = len(lista_debitori)
+                
+                if num_debitori > 0:
+                    # Trasformiamo l'importo in centesimi interi (es. 3.50 -> 350)
+                    importo_cents = int(round(importo * 100))
+                    
+                    # Calcoliamo la quota base e il resto
+                    quota_base_cents = importo_cents // num_debitori # Divisione senza virgola (es. 43)
+                    resto_cents = importo_cents % num_debitori       # Il resto (es. 6 centesimi)
+                    
+                    for i, debitore in enumerate(lista_debitori):
+                        # Diamo 1 centesimo extra ai primi della lista per smaltire il resto
+                        centesimi_extra = 1 if i < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                        
                         if debitore in saldi:
-                            saldi[debitore] -= quota
+                            saldi[debitore] -= quota_finale
 
         # Mostriamo il resoconto netto
         st.subheader("1. Bilancio Netto")
@@ -242,3 +250,34 @@ with tab_bilanci:
             
     else:
         st.info("Nessuna spesa registrata finora.")
+
+with tab_statistiche:
+    st.header("📊 Statistiche Spese")
+    
+    if not df.empty:
+        # Assicuriamoci che gli importi siano letti come numeri
+        df["Importo"] = pd.to_numeric(df["Importo"])
+        
+        # 1. Metrica: Totale Speso
+        totale_viaggio = df["Importo"].sum()
+        st.metric(label="💰 Totale speso finora dal gruppo", value=f"{totale_viaggio:.2f} €")
+        
+        st.divider()
+        
+        # 2. Grafico a barre: Chi ha anticipato di più?
+        st.subheader("🏆 Chi ha anticipato più soldi?")
+        # Raggruppiamo i dati per Pagante e sommiamo gli importi
+        spese_per_pagante = df.groupby("Pagante")["Importo"].sum().reset_index()
+        # Impostiamo il nome come indice per il grafico
+        spese_per_pagante.set_index("Pagante", inplace=True)
+        # Mostriamo il grafico nativo
+        st.bar_chart(spese_per_pagante, color="#ff4757")
+        
+        # 3. (Opzionale) Possiamo fare anche un grafico per Causale!
+        st.subheader("🛍️ In cosa stiamo spendendo?")
+        spese_per_causale = df.groupby("Causale")["Importo"].sum().reset_index()
+        spese_per_causale.set_index("Causale", inplace=True)
+        st.bar_chart(spese_per_causale, color="#1e90ff")
+        
+    else:
+        st.info("Inizia ad aggiungere qualche spesa per vedere i grafici!")
