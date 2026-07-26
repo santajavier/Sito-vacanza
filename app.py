@@ -193,18 +193,7 @@ with tab_bilanci:
                 st.error(f"🟥 **{persona}** è in debito di {abs(saldo_arrotondato)}€")
 
         st.divider()
-
-        # Mostriamo il resoconto netto
-        st.subheader("1. Bilancio Netto")
-        for persona, saldo in saldi.items():
-            saldo_arrotondato = round(saldo, 2)
-            if saldo_arrotondato > 0.01:
-                st.success(f"🟩 **{persona}** è in credito di {saldo_arrotondato}€")
-            elif saldo_arrotondato < -0.01:
-                st.error(f"🟥 **{persona}** è in debito di {abs(saldo_arrotondato)}€")
-
-        st.divider()
-
+        
         # 2. Algoritmo "Semplifica Debiti"
         st.subheader("2. Semplifica Debiti (Chi paga chi)")
         
