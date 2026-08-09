@@ -158,6 +158,47 @@ with tab_spese:
                 else:
                     st.error("❌ Master Password errata!")
 
+    st.divider()
+    st.subheader("✏️ Modifica una spesa")
+    if not df.empty:
+        opzioni_modifica = [f"Riga {i} - {row['Causale']} ({row['Importo']}€)" for i, row in df.iterrows()]
+        spesa_da_mod = st.selectbox("Seleziona la spesa da modificare", opzioni_modifica, key="sel_mod")
+        
+        # Estraiamo l'indice e i dati attuali
+        indice_mod = int(spesa_da_mod.split(" ")[1])
+        riga_attuale = df.loc[indice_mod]
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            nuovo_pagante = st.selectbox("Pagante", partecipanti, index=partecipanti.index(riga_attuale["Pagante"]) if riga_attuale["Pagante"] in partecipanti else 0, key="mod_pag")
+            nuovo_importo = st.number_input("Importo (€)", min_value=0.0, step=0.5, value=float(riga_attuale["Importo"]), key="mod_imp")
+        with col_m2:
+            nuova_causale = st.text_input("Causale", value=riga_attuale["Causale"], key="mod_caus")
+            nuova_categoria = st.text_input("Categoria", value=riga_attuale.get("Categoria", ""), key="mod_cat")
+            
+        st.info("💡 Per modificare le quote esatte dei partecipanti, ti consigliamo di eliminare e reinserire la spesa.")
+        
+        col_mp1, col_mp2 = st.columns(2)
+        with col_mp1:
+            pwd_mod = st.text_input("Master Password per confermare", type="password", key="pwd_mod")
+        with col_mp2:
+            st.write("")
+            st.write("")
+            if st.button("Salva Modifiche"):
+                if pwd_mod == master_password:
+                    df.at[indice_mod, "Pagante"] = nuovo_pagante
+                    df.at[indice_mod, "Importo"] = nuovo_importo
+                    df.at[indice_mod, "Causale"] = nuova_causale
+                    if "Categoria" in df.columns:
+                        df.at[indice_mod, "Categoria"] = nuova_categoria
+                    
+                    conn.update(spreadsheet=url_foglio, data=df)
+                    st.success("✏️ Spesa aggiornata con successo!")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("❌ Master Password errata!")
+
 with tab_bilanci:
     st.header("⚖️ Situazione Saldi e Rimborsi")
 
@@ -271,38 +312,75 @@ with tab_statistiche:
     st.header("📊 Statistiche Spese")
     
     if not df.empty:
+        # Assicuriamoci che gli importi siano letti come numeri
         df["Importo"] = pd.to_numeric(df["Importo"])
         
-        # 1. Metrica: Totale Speso
-        totale_viaggio = df["Importo"].sum()
-        st.metric(label="💰 Totale speso finora dal gruppo", value=f"{totale_viaggio:.2f} €")
+        # --- FILTRO RIMBORSI ---
+        # Creiamo un dataframe per le statistiche escludendo i rimborsi
+        if "Categoria" in df.columns:
+            df["Categoria"] = df["Categoria"].fillna("Altro")
+            # Escludiamo le righe dove la categoria contiene la parola "rimbors"
+            df_stat = df[~df["Categoria"].str.lower().str.contains("rimbors", na=False)].copy()
+        else:
+            df_stat = df.copy()
+
+        st.caption("Le statistiche escludono automaticamente la categoria 'Rimborsi'.")
+        
+        # 1. Metrica: Totale Speso Reale
+        totale_viaggio = df_stat["Importo"].sum()
+        st.metric(label="💰 Totale speso dal gruppo (esclusi rimborsi)", value=f"{totale_viaggio:.2f} €")
         
         st.divider()
         
-        # 2. Grafico a barre con COLORI DIVERSI
+        # --- NUOVO: QUANTO HA CONSUMATO REALMENTE CIASCUNO? ---
+        st.subheader("🎯 Spesa Reale Attribuita")
+        st.write("Quanto ha effettivamente consumato (o deve pagare) ogni persona:")
+        
+        consumi_reali = {persona: 0.0 for persona in partecipanti}
+        
+        for index, riga in df_stat.iterrows():
+            importo = float(riga["Importo"])
+            partecipanti_str = str(riga["Partecipanti"])
+            
+            if ":" in partecipanti_str:
+                # Quote personalizzate
+                voci = partecipanti_str.split(",")
+                for voce in voci:
+                    if ":" in voce:
+                        nome_debitore, quota_str = voce.split(":")
+                        nome_debitore = nome_debitore.strip()
+                        if nome_debitore in consumi_reali:
+                            consumi_reali[nome_debitore] += float(quota_str)
+            else:
+                # Divisione alla romana
+                lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                if len(lista_debitori) > 0:
+                    quota_base = importo / len(lista_debitori)
+                    for debitore in lista_debitori:
+                        if debitore in consumi_reali:
+                            consumi_reali[debitore] += quota_base
+                            
+        # Mostriamo il grafico dei consumi reali
+        df_consumi = pd.DataFrame(list(consumi_reali.items()), columns=["Partecipante", "Consumo"])
+        df_consumi.set_index("Partecipante", inplace=True)
+        st.bar_chart(df_consumi, color="#2ecc71")
+        
+        st.divider()
+
+        # 2. Grafico a barre: Chi ha anticipato di più?
         st.subheader("🏆 Chi ha anticipato più soldi?")
-        spese_per_pagante = df.groupby("Pagante")["Importo"].sum().reset_index()
-        # Per avere i colori diversi, indichiamo a Streamlit che il 'color' varia in base al 'Pagante'
-        st.bar_chart(spese_per_pagante, x="Pagante", y="Importo", color="Pagante")
+        spese_per_pagante = df_stat.groupby("Pagante")["Importo"].sum().reset_index()
+        spese_per_pagante.set_index("Pagante", inplace=True)
+        st.bar_chart(spese_per_pagante, color="#ff4757")
         
         # 3. Grafico a TORTA per le Categorie
         st.subheader("🛍️ In cosa stiamo spendendo?")
-        if "Categoria" in df.columns:
-            # Riempiamo eventuali buchi delle vecchie spese (prima dell'aggiornamento)
-            df["Categoria"] = df["Categoria"].fillna("Altro")
+        if "Categoria" in df_stat.columns:
+            spese_per_categoria = df_stat.groupby("Categoria")["Importo"].sum().reset_index()
             
-            spese_per_categoria = df.groupby("Categoria")["Importo"].sum().reset_index()
-            
-            # Creiamo il grafico a torta (con un buco al centro per renderlo a "ciambella", molto più moderno)
             fig = px.pie(spese_per_categoria, values='Importo', names='Categoria', hole=0.4)
-            
-            # Rimuoviamo lo sfondo bianco per adattarlo al tema chiaro/scuro del cellulare
             fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-            
-            # Mostriamo il grafico su Streamlit
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Aggiungi una spesa con una Categoria per vedere il grafico a torta!")
             
     else:
         st.info("Inizia ad aggiungere qualche spesa per vedere i grafici!")
