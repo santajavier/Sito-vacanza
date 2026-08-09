@@ -332,7 +332,7 @@ with tab_statistiche:
         
         st.divider()
         
-        # --- NUOVO: QUANTO HA CONSUMATO REALMENTE CIASCUNO? ---
+# --- NUOVO: QUANTO HA CONSUMATO REALMENTE CIASCUNO? ---
         st.subheader("🎯 Spesa Reale Attribuita")
         st.write("Quanto ha effettivamente consumato (o deve pagare) ogni persona:")
         
@@ -352,26 +352,30 @@ with tab_statistiche:
                         if nome_debitore in consumi_reali:
                             consumi_reali[nome_debitore] += float(quota_str)
             else:
-                # Divisione alla romana
+                # Divisione alla romana (Applichiamo la logica del centesimo fantasma per pareggiare al 100%)
                 lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
-                if len(lista_debitori) > 0:
-                    quota_base = importo / len(lista_debitori)
-                    for debitore in lista_debitori:
+                num_debitori = len(lista_debitori)
+                
+                if num_debitori > 0:
+                    importo_cents = int(round(importo * 100))
+                    quota_base_cents = importo_cents // num_debitori
+                    resto_cents = importo_cents % num_debitori
+                    
+                    for i, debitore in enumerate(lista_debitori):
+                        centesimi_extra = 1 if i < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                        
                         if debitore in consumi_reali:
-                            consumi_reali[debitore] += quota_base
+                            consumi_reali[debitore] += quota_finale
+                            
+        # Arrotondiamo il risultato finale di ciascuno a 2 cifre decimali esatte
+        for persona in consumi_reali:
+            consumi_reali[persona] = round(consumi_reali[persona], 2)
                             
         # Mostriamo il grafico dei consumi reali
         df_consumi = pd.DataFrame(list(consumi_reali.items()), columns=["Partecipante", "Consumo"])
         df_consumi.set_index("Partecipante", inplace=True)
         st.bar_chart(df_consumi, color="#2ecc71")
-        
-        st.divider()
-
-        # 2. Grafico a barre: Chi ha anticipato di più?
-        st.subheader("🏆 Chi ha anticipato più soldi?")
-        spese_per_pagante = df_stat.groupby("Pagante")["Importo"].sum().reset_index()
-        spese_per_pagante.set_index("Pagante", inplace=True)
-        st.bar_chart(spese_per_pagante, color="#ff4757")
         
         # 3. Grafico a TORTA per le Categorie
         st.subheader("🛍️ In cosa stiamo spendendo?")
