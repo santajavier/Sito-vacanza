@@ -332,12 +332,13 @@ with tab_statistiche:
         
         st.divider()
         
-# --- NUOVO: QUANTO HA CONSUMATO REALMENTE CIASCUNO (STACKED BAR) ---
+# --- SPESA REALE ATTRIBUITA PER CATEGORIA (STACKED BAR E TABELLA) ---
         st.subheader("🎯 Spesa Reale Attribuita per Categoria")
         st.write("Il dettaglio di quanto ha speso ogni persona, diviso per tipologia:")
         
         consumi_dettagliati = []
         
+        # 1. Calcoliamo le quote di tutti riga per riga
         for index, riga in df_stat.iterrows():
             importo = float(riga["Importo"])
             cat = riga["Categoria"] if "Categoria" in df_stat.columns else "Altro"
@@ -352,7 +353,7 @@ with tab_statistiche:
                         nome_debitore = nome_debitore.strip()
                         consumi_dettagliati.append({"Persona": nome_debitore, "Categoria": cat, "Importo": float(quota_str)})
             else:
-                # Divisione alla romana (con logica del centesimo fantasma)
+                # Divisione alla romana (con logica del centesimo fantasma per pareggiare i conti)
                 lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
                 num_debitori = len(lista_debitori)
                 
@@ -366,36 +367,50 @@ with tab_statistiche:
                         quota_finale = (quota_base_cents + centesimi_extra) / 100.0
                         consumi_dettagliati.append({"Persona": debitore, "Categoria": cat, "Importo": quota_finale})
         
-        # Creiamo un DataFrame dai dati raccolti e raggruppiamo
+        # 2. Raggruppiamo i dati e generiamo Grafico + Tabella
         if consumi_dettagliati:
+            # Creiamo il dataframe
             df_consumi_det = pd.DataFrame(consumi_dettagliati)
-            # Sommiamo gli importi per ogni combinazione di Persona e Categoria
             df_raggruppato = df_consumi_det.groupby(["Persona", "Categoria"])["Importo"].sum().reset_index()
-            
-            # Arrotondiamo a 2 cifre decimali
             df_raggruppato["Importo"] = df_raggruppato["Importo"].round(2)
             
-            # Creiamo il grafico a colonne in pila (stacked bar) con Plotly
+            # --- GRAFICO A COLONNE IN PILA CON PLOTLY ---
             fig_stacked = px.bar(
                 df_raggruppato, 
                 x="Persona", 
                 y="Importo", 
                 color="Categoria", 
-                text="Importo", # Mostra il numero direttamente dentro il pezzetto colorato
-                barmode="stack"
+                text="Importo",
+                barmode="stack" # Costringe i blocchi a impilarsi in una singola colonna
             )
             
-            # Miglioriamo l'estetica: sfondo trasparente e testi leggibili
+            # Miglioriamo l'estetica del grafico
             fig_stacked.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", 
                 plot_bgcolor="rgba(0,0,0,0)",
                 xaxis_title="",
-                yaxis_title="Euro (€)"
+                yaxis_title="Euro (€)",
+                legend_title_text="Categoria"
             )
             fig_stacked.update_traces(textposition='inside', textfont=dict(color='white'))
             
+            # Mostriamo il grafico
             st.plotly_chart(fig_stacked, use_container_width=True)
             
+            st.divider()
+            
+            # --- TABELLA DETTAGLIATA ---
+            st.write("📋 *Dettaglio in Tabella*")
+            
+            # Creiamo la tabella "pivot"
+            df_pivot = df_raggruppato.pivot(index="Persona", columns="Categoria", values="Importo").fillna(0)
+            
+            # Aggiungiamo il Totale per persona e ordiniamo
+            df_pivot["Totale (€)"] = df_pivot.sum(axis=1)
+            df_pivot = df_pivot.sort_values(by="Totale (€)", ascending=False)
+            
+            # Mostriamo la tabella formattata
+            st.dataframe(df_pivot.style.format("{:.2f} €"), use_container_width=True)            
         # 3. Grafico a TORTA per le Categorie
         st.subheader("🛍️ In cosa stiamo spendendo?")
         if "Categoria" in df_stat.columns:
