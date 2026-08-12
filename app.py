@@ -332,14 +332,15 @@ with tab_statistiche:
         
         st.divider()
         
-# --- NUOVO: QUANTO HA CONSUMATO REALMENTE CIASCUNO? ---
-        st.subheader("🎯 Spesa Reale Attribuita")
-        st.write("Quanto ha effettivamente consumato (o deve pagare) ogni persona:")
+# --- NUOVO: QUANTO HA CONSUMATO REALMENTE CIASCUNO (STACKED BAR) ---
+        st.subheader("🎯 Spesa Reale Attribuita per Categoria")
+        st.write("Il dettaglio di quanto ha speso ogni persona, diviso per tipologia:")
         
-        consumi_reali = {persona: 0.0 for persona in partecipanti}
+        consumi_dettagliati = []
         
         for index, riga in df_stat.iterrows():
             importo = float(riga["Importo"])
+            cat = riga["Categoria"] if "Categoria" in df_stat.columns else "Altro"
             partecipanti_str = str(riga["Partecipanti"])
             
             if ":" in partecipanti_str:
@@ -349,10 +350,9 @@ with tab_statistiche:
                     if ":" in voce:
                         nome_debitore, quota_str = voce.split(":")
                         nome_debitore = nome_debitore.strip()
-                        if nome_debitore in consumi_reali:
-                            consumi_reali[nome_debitore] += float(quota_str)
+                        consumi_dettagliati.append({"Persona": nome_debitore, "Categoria": cat, "Importo": float(quota_str)})
             else:
-                # Divisione alla romana (Applichiamo la logica del centesimo fantasma per pareggiare al 100%)
+                # Divisione alla romana (con logica del centesimo fantasma)
                 lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
                 num_debitori = len(lista_debitori)
                 
@@ -364,19 +364,38 @@ with tab_statistiche:
                     for i, debitore in enumerate(lista_debitori):
                         centesimi_extra = 1 if i < resto_cents else 0
                         quota_finale = (quota_base_cents + centesimi_extra) / 100.0
-                        
-                        if debitore in consumi_reali:
-                            consumi_reali[debitore] += quota_finale
-                            
-        # Arrotondiamo il risultato finale di ciascuno a 2 cifre decimali esatte
-        for persona in consumi_reali:
-            consumi_reali[persona] = round(consumi_reali[persona], 2)
-                            
-        # Mostriamo il grafico dei consumi reali
-        df_consumi = pd.DataFrame(list(consumi_reali.items()), columns=["Partecipante", "Consumo"])
-        df_consumi.set_index("Partecipante", inplace=True)
-        st.bar_chart(df_consumi, color="#2ecc71")
+                        consumi_dettagliati.append({"Persona": debitore, "Categoria": cat, "Importo": quota_finale})
         
+        # Creiamo un DataFrame dai dati raccolti e raggruppiamo
+        if consumi_dettagliati:
+            df_consumi_det = pd.DataFrame(consumi_dettagliati)
+            # Sommiamo gli importi per ogni combinazione di Persona e Categoria
+            df_raggruppato = df_consumi_det.groupby(["Persona", "Categoria"])["Importo"].sum().reset_index()
+            
+            # Arrotondiamo a 2 cifre decimali
+            df_raggruppato["Importo"] = df_raggruppato["Importo"].round(2)
+            
+            # Creiamo il grafico a colonne in pila (stacked bar) con Plotly
+            fig_stacked = px.bar(
+                df_raggruppato, 
+                x="Persona", 
+                y="Importo", 
+                color="Categoria", 
+                text="Importo", # Mostra il numero direttamente dentro il pezzetto colorato
+                barmode="stack"
+            )
+            
+            # Miglioriamo l'estetica: sfondo trasparente e testi leggibili
+            fig_stacked.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", 
+                plot_bgcolor="rgba(0,0,0,0)",
+                xaxis_title="",
+                yaxis_title="Euro (€)"
+            )
+            fig_stacked.update_traces(textposition='inside', textfont=dict(color='white'))
+            
+            st.plotly_chart(fig_stacked, use_container_width=True)
+            
         # 3. Grafico a TORTA per le Categorie
         st.subheader("🛍️ In cosa stiamo spendendo?")
         if "Categoria" in df_stat.columns:
