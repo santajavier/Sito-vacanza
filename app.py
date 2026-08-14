@@ -130,15 +130,22 @@ with tab_spese:
 
     st.divider()
     st.subheader("👤 Dettaglio Quote Personali")
-    st.write("Controlla la causale, la categoria e l'esatto importo che ti è stato addebitato per ogni spesa.")
+    st.write("Controlla la causale, la categoria e l'esatto importo che ti è stato addebitato per ogni spesa (Rimborsi esclusi).")
     
     # 1. Creiamo il menu a tendina
     persona_selezionata = st.selectbox("Seleziona un partecipante:", partecipanti, key="filtro_persona")
     
     if not df.empty:
-        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti
-        mask_coinvolto = df["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
-        df_coinvolto = df[mask_coinvolto].copy()
+        # --- NOVITÀ: Escludiamo i Rimborsi in partenza ---
+        if "Categoria" in df.columns:
+            # Creiamo un dataframe temporaneo senza i rimborsi
+            df_valido = df[~df["Categoria"].str.lower().str.contains("rimbors", na=False)].copy()
+        else:
+            df_valido = df.copy()
+
+        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti (sul dataframe filtrato)
+        mask_coinvolto = df_valido["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
+        df_coinvolto = df_valido[mask_coinvolto].copy()
         
         if not df_coinvolto.empty:
             dettagli_personali = []
@@ -146,7 +153,7 @@ with tab_spese:
             # 3. Calcoliamo la quota esatta recuperando indice e categoria
             for index, riga in df_coinvolto.iterrows():
                 causale = riga["Causale"]
-                categoria = riga.get("Categoria", "Altro") # <-- RECUPERO LA CATEGORIA
+                categoria = riga.get("Categoria", "Altro")
                 importo_totale = float(riga["Importo"])
                 partecipanti_str = str(riga["Partecipanti"])
                 quota_finale = 0.0
@@ -178,7 +185,7 @@ with tab_spese:
                     dettagli_personali.append({
                         "Riga N.": index,
                         "Causale": causale, 
-                        "Categoria": categoria, # <-- AGGIUNTA ALLA TABELLA
+                        "Categoria": categoria, 
                         "Quota Attribuita (€)": quota_finale
                     })
             
@@ -189,7 +196,7 @@ with tab_spese:
                 # Impostiamo il numero della riga come indice visivo della tabella
                 df_dettaglio.set_index("Riga N.", inplace=True)
                 
-                st.success(f"Trovate **{len(df_dettaglio)}** spese a carico di **{persona_selezionata}**.")
+                st.success(f"Trovate **{len(df_dettaglio)}** spese a carico di **{persona_selezionata}** (Rimborsi esclusi).")
                 
                 # Mostriamo la tabella formattando la colonna in Euro
                 st.dataframe(df_dettaglio.style.format({"Quota Attribuita (€)": "{:.2f} €"}), use_container_width=True)
@@ -197,8 +204,7 @@ with tab_spese:
                 totale_quote = df_dettaglio["Quota Attribuita (€)"].sum()
                 st.info(f"💡 Il totale complessivo addebitato in queste spese è di {totale_quote:.2f} €")
         else:
-            st.warning(f"{persona_selezionata} non ha quote a suo carico.")
-
+            st.warning(f"{persona_selezionata} non ha quote a suo carico (Rimborsi esclusi).")
             
     st.divider()
     st.subheader("🗑️ Elimina una spesa")
