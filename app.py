@@ -129,34 +129,72 @@ with tab_spese:
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("👤 Riepilogo Personale")
-    st.write("Controlla rapidamente in quali spese sei stato inserito (sia come pagante che come debitore).")
+    st.subheader("👤 Dettaglio Quote Personali")
+    st.write("Controlla la causale e l'esatto importo che ti è stato addebitato per ogni spesa.")
     
     # 1. Creiamo il menu a tendina
     persona_selezionata = st.selectbox("Seleziona un partecipante:", partecipanti, key="filtro_persona")
     
     if not df.empty:
-        # 2. Creiamo le due condizioni di ricerca
-        # Condizione A: La persona è chi ha anticipato i soldi
-        mask_pagante = df["Pagante"] == persona_selezionata
-        # Condizione B: La persona è scritta nella colonna dei partecipanti
+        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti (deve pagare una quota)
         mask_coinvolto = df["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
+        df_coinvolto = df[mask_coinvolto].copy()
         
-        # 3. Filtriamo il DataFrame unendo le due condizioni
-        df_personale = df[mask_pagante | mask_coinvolto].copy()
-        
-        # 4. Mostriamo i risultati
-        if not df_personale.empty:
-            st.success(f"Trovate **{len(df_personale)}** spese in cui è coinvolto/a **{persona_selezionata}**.")
-            st.dataframe(df_personale, use_container_width=True)
+        if not df_coinvolto.empty:
+            dettagli_personali = []
             
-            # Bonus: mostriamo il valore complessivo di quegli scontrini
-            df_personale["Importo"] = pd.to_numeric(df_personale["Importo"])
-            totale_scontrini = df_personale["Importo"].sum()
-            st.info(f"💡 Il valore totale cumulato di questi scontrini è di {totale_scontrini:.2f} €")
+            # 3. Calcoliamo la quota esatta per ogni singola spesa
+            for index, riga in df_coinvolto.iterrows():
+                causale = riga["Causale"]
+                importo_totale = float(riga["Importo"])
+                partecipanti_str = str(riga["Partecipanti"])
+                quota_finale = 0.0
+                
+                if ":" in partecipanti_str:
+                    # Caso A: Quote personalizzate
+                    voci = partecipanti_str.split(",")
+                    for voce in voci:
+                        if ":" in voce:
+                            nome_debitore, quota_str = voce.split(":")
+                            if nome_debitore.strip() == persona_selezionata:
+                                quota_finale = float(quota_str)
+                else:
+                    # Caso B: Divisione alla romana (con centesimo fantasma)
+                    lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                    num_debitori = len(lista_debitori)
+                    
+                    if num_debitori > 0 and persona_selezionata in lista_debitori:
+                        importo_cents = int(round(importo_totale * 100))
+                        quota_base_cents = importo_cents // num_debitori
+                        resto_cents = importo_cents % num_debitori
+                        
+                        # Troviamo la posizione della persona per assegnare i centesimi extra
+                        indice_persona = lista_debitori.index(persona_selezionata)
+                        centesimi_extra = 1 if indice_persona < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                
+                # Salviamo solo Causale e Quota se l'importo è maggiore di zero
+                if quota_finale > 0:
+                    dettagli_personali.append({
+                        "Causale": causale, 
+                        "Quota Attribuita (€)": quota_finale
+                    })
+            
+            # 4. Generiamo la tabella finale snella
+            if dettagli_personali:
+                df_dettaglio = pd.DataFrame(dettagli_personali)
+                
+                st.success(f"Trovate **{len(df_dettaglio)}** spese a carico di **{persona_selezionata}**.")
+                
+                # Mostriamo la tabella formattando la colonna in Euro
+                st.dataframe(df_dettaglio.style.format({"Quota Attribuita (€)": "{:.2f} €"}), use_container_width=True)
+                
+                # Calcoliamo anche la somma di queste specifiche quote
+                totale_quote = df_dettaglio["Quota Attribuita (€)"].sum()
+                st.info(f"💡 Il totale complessivo addebitato in queste spese è di {totale_quote:.2f} €")
         else:
-            st.warning(f"{persona_selezionata} non è ancora presente in nessuna registrazione.")
-
+            st.warning(f"{persona_selezionata} non ha quote a suo carico.")
+    
     st.divider()
     st.subheader("🗑️ Elimina una spesa")
     if not df.empty:
