@@ -130,22 +130,23 @@ with tab_spese:
 
     st.divider()
     st.subheader("👤 Dettaglio Quote Personali")
-    st.write("Controlla la causale e l'esatto importo che ti è stato addebitato per ogni spesa.")
+    st.write("Controlla la causale, la categoria e l'esatto importo che ti è stato addebitato per ogni spesa.")
     
     # 1. Creiamo il menu a tendina
     persona_selezionata = st.selectbox("Seleziona un partecipante:", partecipanti, key="filtro_persona")
     
     if not df.empty:
-        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti (deve pagare una quota)
+        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti
         mask_coinvolto = df["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
         df_coinvolto = df[mask_coinvolto].copy()
         
         if not df_coinvolto.empty:
             dettagli_personali = []
             
-            # 3. Calcoliamo la quota esatta per ogni singola spesa
+            # 3. Calcoliamo la quota esatta recuperando indice e categoria
             for index, riga in df_coinvolto.iterrows():
                 causale = riga["Causale"]
+                categoria = riga.get("Categoria", "Altro") # <-- RECUPERO LA CATEGORIA
                 importo_totale = float(riga["Importo"])
                 partecipanti_str = str(riga["Partecipanti"])
                 quota_finale = 0.0
@@ -159,7 +160,7 @@ with tab_spese:
                             if nome_debitore.strip() == persona_selezionata:
                                 quota_finale = float(quota_str)
                 else:
-                    # Caso B: Divisione alla romana (con centesimo fantasma)
+                    # Caso B: Divisione alla romana 
                     lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
                     num_debitori = len(lista_debitori)
                     
@@ -168,33 +169,37 @@ with tab_spese:
                         quota_base_cents = importo_cents // num_debitori
                         resto_cents = importo_cents % num_debitori
                         
-                        # Troviamo la posizione della persona per assegnare i centesimi extra
                         indice_persona = lista_debitori.index(persona_selezionata)
                         centesimi_extra = 1 if indice_persona < resto_cents else 0
                         quota_finale = (quota_base_cents + centesimi_extra) / 100.0
                 
-                # Salviamo solo Causale e Quota se l'importo è maggiore di zero
+                # Salviamo Riga, Causale, Categoria e Quota
                 if quota_finale > 0:
                     dettagli_personali.append({
+                        "Riga N.": index,
                         "Causale": causale, 
+                        "Categoria": categoria, # <-- AGGIUNTA ALLA TABELLA
                         "Quota Attribuita (€)": quota_finale
                     })
             
-            # 4. Generiamo la tabella finale snella
+            # 4. Generiamo la tabella finale
             if dettagli_personali:
                 df_dettaglio = pd.DataFrame(dettagli_personali)
+                
+                # Impostiamo il numero della riga come indice visivo della tabella
+                df_dettaglio.set_index("Riga N.", inplace=True)
                 
                 st.success(f"Trovate **{len(df_dettaglio)}** spese a carico di **{persona_selezionata}**.")
                 
                 # Mostriamo la tabella formattando la colonna in Euro
                 st.dataframe(df_dettaglio.style.format({"Quota Attribuita (€)": "{:.2f} €"}), use_container_width=True)
                 
-                # Calcoliamo anche la somma di queste specifiche quote
                 totale_quote = df_dettaglio["Quota Attribuita (€)"].sum()
                 st.info(f"💡 Il totale complessivo addebitato in queste spese è di {totale_quote:.2f} €")
         else:
             st.warning(f"{persona_selezionata} non ha quote a suo carico.")
-    
+
+            
     st.divider()
     st.subheader("🗑️ Elimina una spesa")
     if not df.empty:
