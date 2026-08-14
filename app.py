@@ -129,6 +129,35 @@ with tab_spese:
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.divider()
+    st.subheader("👤 Riepilogo Personale")
+    st.write("Controlla rapidamente in quali spese sei stato inserito (sia come pagante che come debitore).")
+    
+    # 1. Creiamo il menu a tendina
+    persona_selezionata = st.selectbox("Seleziona un partecipante:", partecipanti, key="filtro_persona")
+    
+    if not df.empty:
+        # 2. Creiamo le due condizioni di ricerca
+        # Condizione A: La persona è chi ha anticipato i soldi
+        mask_pagante = df["Pagante"] == persona_selezionata
+        # Condizione B: La persona è scritta nella colonna dei partecipanti
+        mask_coinvolto = df["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
+        
+        # 3. Filtriamo il DataFrame unendo le due condizioni
+        df_personale = df[mask_pagante | mask_coinvolto].copy()
+        
+        # 4. Mostriamo i risultati
+        if not df_personale.empty:
+            st.success(f"Trovate **{len(df_personale)}** spese in cui è coinvolto/a **{persona_selezionata}**.")
+            st.dataframe(df_personale, use_container_width=True)
+            
+            # Bonus: mostriamo il valore complessivo di quegli scontrini
+            df_personale["Importo"] = pd.to_numeric(df_personale["Importo"])
+            totale_scontrini = df_personale["Importo"].sum()
+            st.info(f"💡 Il valore totale cumulato di questi scontrini è di {totale_scontrini:.2f} €")
+        else:
+            st.warning(f"{persona_selezionata} non è ancora presente in nessuna registrazione.")
+
+    st.divider()
     st.subheader("🗑️ Elimina una spesa")
     if not df.empty:
         # Creiamo un menu a tendina che mostra l'indice, la causale e l'importo
