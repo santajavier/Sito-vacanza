@@ -246,6 +246,27 @@ with tab_spese:
         indice_mod = int(spesa_da_mod.split(" ")[1])
         riga_attuale = df.loc[indice_mod]
         
+        # --- LOGICA DI LETTURA PARTECIPANTI E QUOTE ATTUALI ---
+        partecipanti_str = str(riga_attuale["Partecipanti"])
+        is_custom = ":" in partecipanti_str
+        
+        quote_esistenti = {}
+        partecipanti_esistenti = []
+        
+        # Capiamo come era divisa la spesa prima
+        if is_custom:
+            for item in partecipanti_str.split(","):
+                if ":" in item:
+                    nome, quota = item.split(":")
+                    quote_esistenti[nome.strip()] = float(quota)
+                    partecipanti_esistenti.append(nome.strip())
+        else:
+            partecipanti_esistenti = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip()]
+        
+        # Pulizia di sicurezza nel caso un vecchio partecipante non sia più nella lista generale
+        default_partecipanti = [p for p in partecipanti_esistenti if p in partecipanti]
+        
+        # --- INTERFACCIA DATI BASE ---
         col_m1, col_m2 = st.columns(2)
         with col_m1:
             nuovo_pagante = st.selectbox("Pagante", partecipanti, index=partecipanti.index(riga_attuale["Pagante"]) if riga_attuale["Pagante"] in partecipanti else 0, key="mod_pag")
@@ -253,25 +274,58 @@ with tab_spese:
         with col_m2:
             nuova_causale = st.text_input("Causale", value=riga_attuale["Causale"], key="mod_caus")
             nuova_categoria = st.text_input("Categoria", value=riga_attuale.get("Categoria", ""), key="mod_cat")
-            
-        st.info("💡 Per modificare le quote esatte dei partecipanti, ti consigliamo di eliminare e reinserire la spesa.")
         
+        # --- INTERFACCIA GESTIONE AVANZATA PARTECIPANTI ---
+        st.write("👥 **Gestione Partecipanti e Quote**")
+        tipo_div = st.radio("Come dividere la spesa?", ["In parti uguali", "Quote personalizzate"], index=1 if is_custom else 0, key="mod_tipo_div")
+        
+        # Qui puoi aggiungere o togliere persone al volo
+        nuovi_partecipanti = st.multiselect("Partecipanti coinvolti", partecipanti, default=default_partecipanti, key="mod_part")
+        
+        nuova_stringa_partecipanti = ""
+        
+        if tipo_div == "In parti uguali":
+            nuova_stringa_partecipanti = ", ".join(nuovi_partecipanti)
+        else:
+            st.caption("Inserisci o modifica la quota esatta per ogni partecipante:")
+            quote_aggiornate = {}
+            # Creiamo 3 colonne per affiancare gli input ed evitare una lista chilometrica
+            cols = st.columns(3)
+            for i, p in enumerate(nuovi_partecipanti):
+                valore_default = quote_esistenti.get(p, 0.0) # Se c'era già una quota, la ripesca
+                with cols[i % 3]:
+                    quote_aggiornate[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=float(valore_default), key=f"mod_quota_{p}")
+            
+            nuova_stringa_partecipanti = ", ".join([f"{p}:{quote_aggiornate[p]}" for p in nuovi_partecipanti])
+            
+            # Controllo di sicurezza incrociato
+            somma_quote = sum(quote_aggiornate.values())
+            if abs(somma_quote - nuovo_importo) > 0.01:
+                st.warning(f"⚠️ Attenzione: la somma delle quote personalizzate ({somma_quote:.2f} €) non coincide con l'importo totale ({nuovo_importo:.2f} €).")
+            elif len(nuovi_partecipanti) > 0:
+                st.success("✅ La somma delle quote combacia con il totale.")
+
+        # --- SALVATAGGIO ---
         col_mp1, col_mp2 = st.columns(2)
         with col_mp1:
             pwd_mod = st.text_input("Master Password per confermare", type="password", key="pwd_mod")
         with col_mp2:
             st.write("")
             st.write("")
-            if st.button("Salva Modifiche"):
+            if st.button("Salva Modifiche", key="btn_salva_mod"):
                 if pwd_mod == master_password:
+                    # Sovrascriviamo le celle specifiche del DataFrame
                     df.at[indice_mod, "Pagante"] = nuovo_pagante
                     df.at[indice_mod, "Importo"] = nuovo_importo
                     df.at[indice_mod, "Causale"] = nuova_causale
                     if "Categoria" in df.columns:
                         df.at[indice_mod, "Categoria"] = nuova_categoria
                     
+                    # Salviamo la nuova stringa ricalcolata (es. "Santa:4, Luisa:2" o "Santa, Luisa")
+                    df.at[indice_mod, "Partecipanti"] = nuova_stringa_partecipanti
+                    
                     conn.update(spreadsheet=url_foglio, data=df)
-                    st.success("✏️ Spesa aggiornata con successo!")
+                    st.success("✏️ Spesa aggiornata e quote ricalcolate con successo!")
                     st.cache_data.clear()
                     st.rerun()
                 else:
