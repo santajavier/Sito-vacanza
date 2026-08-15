@@ -269,95 +269,102 @@ with tab_spese:
         opzioni_modifica = [f"Riga {i} - {row['Causale']} ({row['Importo']}€)" for i, row in df.iterrows()]
         spesa_da_mod = st.selectbox("Seleziona la spesa da modificare", opzioni_modifica, key="sel_mod")
         
-        # Estraiamo l'indice e i dati attuali
-        indice_mod = int(spesa_da_mod.split(" ")[1])
-        riga_attuale = df.loc[indice_mod]
+        # 1. Estraiamo l'indice dal menu a tendina
+        indice_mod_selezionato = int(spesa_da_mod.split(" ")[1])
         
-        # --- LOGICA DI LETTURA PARTECIPANTI E QUOTE ATTUALI ---
-        partecipanti_str = str(riga_attuale["Partecipanti"])
-        is_custom = ":" in partecipanti_str
-        
-        quote_esistenti = {}
-        partecipanti_esistenti = []
-        
-        # Capiamo come era divisa la spesa prima
-        if is_custom:
-            for item in partecipanti_str.split(","):
-                if ":" in item:
-                    nome, quota = item.split(":")
-                    quote_esistenti[nome.strip()] = float(quota)
-                    partecipanti_esistenti.append(nome.strip())
-        else:
-            partecipanti_esistenti = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip()]
-        
-        # Pulizia di sicurezza nel caso un vecchio partecipante non sia più nella lista generale
-        default_partecipanti = [p for p in partecipanti_esistenti if p in partecipanti]
-        
-        # --- INTERFACCIA DATI BASE ---
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            nuovo_pagante = st.selectbox("Pagante", partecipanti, index=partecipanti.index(riga_attuale["Pagante"]) if riga_attuale["Pagante"] in partecipanti else 0, key="mod_pag")
-            nuovo_importo = st.number_input("Importo (€)", min_value=0.0, step=0.5, value=float(riga_attuale["Importo"]), key="mod_imp")
-        with col_m2:
-            nuova_causale = st.text_input("Causale", value=riga_attuale["Causale"], key="mod_caus")
-            nuova_categoria = st.text_input("Categoria", value=riga_attuale.get("Categoria", ""), key="mod_cat")
-        
-        # --- INTERFACCIA GESTIONE AVANZATA PARTECIPANTI ---
-        st.write("👥 **Gestione Partecipanti e Quote**")
-        tipo_div = st.radio("Come dividere la spesa?", ["In parti uguali", "Quote personalizzate"], index=1 if is_custom else 0, key="mod_tipo_div")
-        
-        # Qui puoi aggiungere o togliere persone al volo
-        nuovi_partecipanti = st.multiselect("Partecipanti coinvolti", partecipanti, default=default_partecipanti, key="mod_part")
-        
-        nuova_stringa_partecipanti = ""
-        
-        if tipo_div == "In parti uguali":
-            nuova_stringa_partecipanti = ", ".join(nuovi_partecipanti)
-        else:
-            st.caption("Inserisci o modifica la quota esatta per ogni partecipante:")
-            quote_aggiornate = {}
-            # Creiamo 3 colonne per affiancare gli input ed evitare una lista chilometrica
-            cols = st.columns(3)
-            for i, p in enumerate(nuovi_partecipanti):
-                valore_default = quote_esistenti.get(p, 0.0) # Se c'era già una quota, la ripesca
-                with cols[i % 3]:
-                    quote_aggiornate[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=float(valore_default), key=f"mod_quota_{p}")
+        # 2. Pulsante esplicito per forzare il caricamento
+        if st.button("🔄 Carica Dati per questa spesa"):
+            st.session_state["indice_in_modifica"] = indice_mod_selezionato
             
-            nuova_stringa_partecipanti = ", ".join([f"{p}:{quote_aggiornate[p]}" for p in nuovi_partecipanti])
+        # 3. Mostriamo i campi di testo SOLO dopo aver cliccato il pulsante e salvato la scelta
+        if "indice_in_modifica" in st.session_state:
+            indice_mod = st.session_state["indice_in_modifica"]
+            riga_attuale = df.loc[indice_mod]
             
-            # Controllo di sicurezza incrociato
-            somma_quote = sum(quote_aggiornate.values())
-            if abs(somma_quote - nuovo_importo) > 0.01:
-                st.warning(f"⚠️ Attenzione: la somma delle quote personalizzate ({somma_quote:.2f} €) non coincide con l'importo totale ({nuovo_importo:.2f} €).")
-            elif len(nuovi_partecipanti) > 0:
-                st.success("✅ La somma delle quote combacia con il totale.")
+            st.info(f"Stai modificando i dati della **Riga {indice_mod}** (Premi 'Carica Dati' in alto se cambi spesa nel menu)")
+            
+            # --- LOGICA DI LETTURA PARTECIPANTI E QUOTE ATTUALI ---
+            partecipanti_str = str(riga_attuale["Partecipanti"])
+            is_custom = ":" in partecipanti_str
+            
+            quote_esistenti = {}
+            partecipanti_esistenti = []
+            
+            if is_custom:
+                for item in partecipanti_str.split(","):
+                    if ":" in item:
+                        nome, quota = item.split(":")
+                        quote_esistenti[nome.strip()] = float(quota)
+                        partecipanti_esistenti.append(nome.strip())
+            else:
+                partecipanti_esistenti = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip()]
+            
+            default_partecipanti = [p for p in partecipanti_esistenti if p in partecipanti]
+            
+            # --- INTERFACCIA DATI BASE ---
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                idx_pagante = partecipanti.index(riga_attuale["Pagante"]) if riga_attuale["Pagante"] in partecipanti else 0
+                nuovo_pagante = st.selectbox("Pagante", partecipanti, index=idx_pagante, key=f"mod_pag_{indice_mod}")
+                nuovo_importo = st.number_input("Importo (€)", min_value=0.0, step=0.5, value=float(riga_attuale["Importo"]), key=f"mod_imp_{indice_mod}")
+            with col_m2:
+                nuova_causale = st.text_input("Causale", value=str(riga_attuale["Causale"]), key=f"mod_caus_{indice_mod}")
+                nuova_categoria = st.text_input("Categoria", value=str(riga_attuale.get("Categoria", "")), key=f"mod_cat_{indice_mod}")
+            
+            # --- INTERFACCIA GESTIONE AVANZATA PARTECIPANTI ---
+            st.write("👥 **Gestione Partecipanti e Quote**")
+            tipo_div = st.radio("Come dividere la spesa?", ["In parti uguali", "Quote personalizzate"], index=1 if is_custom else 0, key=f"mod_tipo_div_{indice_mod}")
+            
+            nuovi_partecipanti = st.multiselect("Partecipanti coinvolti", partecipanti, default=default_partecipanti, key=f"mod_part_{indice_mod}")
+            
+            nuova_stringa_partecipanti = ""
+            
+            if tipo_div == "In parti uguali":
+                nuova_stringa_partecipanti = ", ".join(nuovi_partecipanti)
+            else:
+                st.caption("Inserisci o modifica la quota esatta per ogni partecipante:")
+                quote_aggiornate = {}
+                cols = st.columns(3)
+                for i, p in enumerate(nuovi_partecipanti):
+                    valore_default = quote_esistenti.get(p, 0.0)
+                    with cols[i % 3]:
+                        quote_aggiornate[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=float(valore_default), key=f"mod_quota_{p}_{indice_mod}")
+                
+                nuova_stringa_partecipanti = ", ".join([f"{p}:{quote_aggiornate[p]}" for p in nuovi_partecipanti])
+                
+                somma_quote = sum(quote_aggiornate.values())
+                if abs(somma_quote - nuovo_importo) > 0.01:
+                    st.warning(f"⚠️ Attenzione: la somma delle quote personalizzate ({somma_quote:.2f} €) non coincide con l'importo totale ({nuovo_importo:.2f} €).")
+                elif len(nuovi_partecipanti) > 0:
+                    st.success("✅ La somma delle quote combacia con il totale.")
 
-        # --- SALVATAGGIO ---
-        col_mp1, col_mp2 = st.columns(2)
-        with col_mp1:
-            pwd_mod = st.text_input("Master Password per confermare", type="password", key="pwd_mod")
-        with col_mp2:
-            st.write("")
-            st.write("")
-            if st.button("Salva Modifiche", key="btn_salva_mod"):
-                if pwd_mod == master_password:
-                    # Sovrascriviamo le celle specifiche del DataFrame
-                    df.at[indice_mod, "Pagante"] = nuovo_pagante
-                    df.at[indice_mod, "Importo"] = nuovo_importo
-                    df.at[indice_mod, "Causale"] = nuova_causale
-                    if "Categoria" in df.columns:
-                        df.at[indice_mod, "Categoria"] = nuova_categoria
-                    
-                    # Salviamo la nuova stringa ricalcolata (es. "Santa:4, Luisa:2" o "Santa, Luisa")
-                    df.at[indice_mod, "Partecipanti"] = nuova_stringa_partecipanti
-                    
-                    conn.update(spreadsheet=url_foglio, data=df)
-                    st.success("✏️ Spesa aggiornata e quote ricalcolate con successo!")
-                    st.cache_data.clear()
-                    st.rerun()
-                else:
-                    st.error("❌ Master Password errata!")
-
+            # --- SALVATAGGIO ---
+            col_mp1, col_mp2 = st.columns(2)
+            with col_mp1:
+                pwd_mod = st.text_input("Master Password per confermare", type="password", key=f"pwd_mod_{indice_mod}")
+            with col_mp2:
+                st.write("")
+                st.write("")
+                if st.button("Salva Modifiche", key=f"btn_salva_mod_{indice_mod}"):
+                    if pwd_mod == master_password:
+                        # Riscriviamo i dati aggiornati
+                        df.at[indice_mod, "Pagante"] = nuovo_pagante
+                        df.at[indice_mod, "Importo"] = nuovo_importo
+                        df.at[indice_mod, "Causale"] = nuova_causale
+                        if "Categoria" in df.columns:
+                            df.at[indice_mod, "Categoria"] = nuova_categoria
+                        df.at[indice_mod, "Partecipanti"] = nuova_stringa_partecipanti
+                        
+                        conn.update(spreadsheet=url_foglio, data=df)
+                        st.success("✏️ Spesa aggiornata con successo!")
+                        
+                        # Eliminiamo la memoria di modifica per "chiudere" l'editor
+                        del st.session_state["indice_in_modifica"]
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error("❌ Master Password errata!")
+    
 with tab_bilanci:
     st.header("⚖️ Situazione Saldi e Rimborsi")
 
