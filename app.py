@@ -124,9 +124,36 @@ with tab_spese:
             st.error("⚠️ Compila tutti i campi richiesti.")
 
     st.divider()
-    st.subheader("📊 Storico Spese")
-    # Mostriamo la tabella con i dati reali presi da Google Sheets
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.header("💸 Riepilogo Spese")
+    
+    if not df.empty:
+        # --- FILTRO PER CATEGORIA ---
+        if "Categoria" in df.columns:
+            # Recuperiamo tutte le categorie uniche dal foglio (ignorando le celle vuote)
+            categorie_uniche = df["Categoria"].dropna().unique().tolist()
+            # Aggiungiamo l'opzione per vedere tutto
+            opzioni_filtro = ["Tutte le categorie"] + sorted(categorie_uniche)
+            
+            categoria_selezionata = st.selectbox("🔍 Filtra per categoria:", opzioni_filtro, key="filtro_cat_principale")
+            
+            # Applichiamo il filtro se non è selezionato "Tutte le categorie"
+            if categoria_selezionata != "Tutte le categorie":
+                df_mostrato = df[df["Categoria"] == categoria_selezionata].copy()
+            else:
+                df_mostrato = df.copy()
+        else:
+            df_mostrato = df.copy()
+            
+        # Mostriamo la tabella filtrata
+        st.dataframe(df_mostrato, use_container_width=True)
+        
+        # Mostriamo il totale degli scontrini filtrati
+        if not df_mostrato.empty:
+            df_mostrato["Importo"] = pd.to_numeric(df_mostrato["Importo"])
+            totale_mostrato = df_mostrato["Importo"].sum()
+            st.caption(f"Totale spese in questa vista: **{totale_mostrato:.2f} €**")
+    else:
+        st.info("Nessuna spesa registrata.")
 
     st.divider()
     st.subheader("👤 Dettaglio Quote Personali")
