@@ -100,3 +100,491 @@ with tab_spese:
                     st.stop()
                 
                 # Salviamo le quote nel formato "Nome:10.5, Nome2:5.0"
+                stringa_partecipanti = ", ".join([f"{p}:{q}" for p, q in quote_personalizzate.items()])
+            else:
+                # Formato standard per la divisione alla romana
+                stringa_partecipanti = ", ".join(diviso_tra)
+
+            nuova_spesa = pd.DataFrame([{
+                "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "Pagante": pagante,
+                "Importo": importo,
+                "Causale": causale,
+                "Partecipanti": stringa_partecipanti,
+                "Categoria": categoria
+            }])
+            
+            df_aggiornato = nuova_spesa if df.empty else pd.concat([df, nuova_spesa], ignore_index=True)
+            conn.update(spreadsheet=url_foglio, data=df_aggiornato)
+            
+            st.success("✅ Spesa registrata!")
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.error("⚠️ Compila tutti i campi richiesti.")
+
+    st.divider()
+    st.header("💸 Riepilogo Spese")
+    
+    if not df.empty:
+        # --- FILTRO PER CATEGORIA ---
+        if "Categoria" in df.columns:
+            # Recuperiamo tutte le categorie uniche dal foglio (ignorando le celle vuote)
+            categorie_uniche = df["Categoria"].dropna().unique().tolist()
+            # Aggiungiamo l'opzione per vedere tutto
+            opzioni_filtro = ["Tutte le categorie"] + sorted(categorie_uniche)
+            
+            categoria_selezionata = st.selectbox("🔍 Filtra per categoria:", opzioni_filtro, key="filtro_cat_principale")
+            
+            # Applichiamo il filtro se non è selezionato "Tutte le categorie"
+            if categoria_selezionata != "Tutte le categorie":
+                df_mostrato = df[df["Categoria"] == categoria_selezionata].copy()
+            else:
+                df_mostrato = df.copy()
+        else:
+            df_mostrato = df.copy()
+            
+        # Mostriamo la tabella filtrata
+        st.dataframe(df_mostrato, use_container_width=True)
+        
+        # Mostriamo il totale degli scontrini filtrati
+        if not df_mostrato.empty:
+            df_mostrato["Importo"] = pd.to_numeric(df_mostrato["Importo"])
+            totale_mostrato = df_mostrato["Importo"].sum()
+            st.caption(f"Totale spese in questa vista: **{totale_mostrato:.2f} €**")
+    else:
+        st.info("Nessuna spesa registrata.")
+
+    st.divider()
+    st.subheader("👤 Dettaglio Quote Personali")
+    st.write("Controlla la causale, la categoria e l'esatto importo che ti è stato addebitato per ogni spesa (Rimborsi esclusi).")
+    
+    # 1. Creiamo il menu a tendina
+    persona_selezionata = st.selectbox("Seleziona un partecipante:", partecipanti, key="filtro_persona")
+    
+    if not df.empty:
+        # --- NOVITÀ: Escludiamo i Rimborsi in partenza ---
+        if "Categoria" in df.columns:
+            # Creiamo un dataframe temporaneo senza i rimborsi
+            df_valido = df[~df["Categoria"].str.lower().str.contains("rimbors", na=False)].copy()
+        else:
+            df_valido = df.copy()
+
+        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti (sul dataframe filtrato)
+        mask_coinvolto = df_valido["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
+        df_coinvolto = df_valido[mask_coinvolto].copy()
+        
+        if not df_coinvolto.empty:
+            dettagli_personali = []
+            
+            # 3. Calcoliamo la quota esatta recuperando indice e categoria
+            for index, riga in df_coinvolto.iterrows():
+                causale = riga["Causale"]
+                categoria = riga.get("Categoria", "Altro")
+                importo_totale = float(riga["Importo"])
+                partecipanti_str = str(riga["Partecipanti"])
+                quota_finale = 0.0
+                
+                if ":" in partecipanti_str:
+                    # Caso A: Quote personalizzate
+                    voci = partecipanti_str.split(",")
+                    for voce in voci:
+                        if ":" in voce:
+                            nome_debitore, quota_str = voce.split(":")
+                            if nome_debitore.strip() == persona_selezionata:
+                                quota_finale = float(quota_str)
+                else:
+                    # Caso B: Divisione alla romana 
+                    lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                    num_debitori = len(lista_debitori)
+                    
+                    if num_debitori > 0 and persona_selezionata in lista_debitori:
+                        importo_cents = int(round(importo_totale * 100))
+                        quota_base_cents = importo_cents // num_debitori
+                        resto_cents = importo_cents % num_debitori
+                        
+                        indice_persona = lista_debitori.index(persona_selezionata)
+                        centesimi_extra = 1 if indice_persona < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                
+                # Salviamo Riga, Causale, Categoria e Quota
+                if quota_finale > 0:
+                    dettagli_personali.append({
+                        "Riga N.": index,
+                        "Causale": causale, 
+                        "Categoria": categoria, 
+                        "Quota Attribuita (€)": quota_finale
+                    })
+            
+            # 4. Generiamo la tabella finale
+            if dettagli_personali:
+                df_dettaglio = pd.DataFrame(dettagli_personali)
+                
+                # Impostiamo il numero della riga come indice visivo della tabella
+                df_dettaglio.set_index("Riga N.", inplace=True)
+                
+                st.success(f"Trovate **{len(df_dettaglio)}** spese a carico di **{persona_selezionata}** (Rimborsi esclusi).")
+                
+                # Mostriamo la tabella formattando la colonna in Euro
+                st.dataframe(df_dettaglio.style.format({"Quota Attribuita (€)": "{:.2f} €"}), use_container_width=True)
+                
+                totale_quote = df_dettaglio["Quota Attribuita (€)"].sum()
+                st.info(f"💡 Il totale complessivo addebitato in queste spese è di {totale_quote:.2f} €")
+        else:
+            st.warning(f"{persona_selezionata} non ha quote a suo carico (Rimborsi esclusi).")
+            
+    st.divider()
+    st.subheader("🗑️ Elimina una spesa")
+    if not df.empty:
+        # Creiamo un menu a tendina che mostra l'indice, la causale e l'importo
+        opzioni_eliminazione = [f"Riga {i} - {row['Causale']} ({row['Importo']}€) pagata da {row['Pagante']}" for i, row in df.iterrows()]
+        spesa_da_eliminare = st.selectbox("Seleziona la spesa da annullare", opzioni_eliminazione)
+        
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            pwd_master = st.text_input("Master Password", type="password")
+        with col_p2:
+            st.write("") # Spazio vuoto per allineare il bottone
+            st.write("")
+            if st.button("Elimina Definitivamente"):
+                # Sostituisci 'Admin123' con la TUA password segreta
+                if pwd_master == master_password:
+                    # Estraiamo l'indice della riga dalla stringa selezionata
+                    indice_riga = int(spesa_da_eliminare.split(" ")[1])
+                    
+                    # Eliminiamo la riga dal dataframe
+                    df_aggiornato = df.drop(index=indice_riga)
+                    
+                    # Riscriviamo il dataframe aggiornato su Google Sheets
+                    conn.update(spreadsheet=url_foglio, data=df_aggiornato)
+                    st.success("🗑️ Spesa eliminata con successo!")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("❌ Master Password errata!")
+
+    st.divider()
+    st.subheader("✏️ Modifica una spesa")
+    if not df.empty:
+        opzioni_modifica = [f"Riga {i} - {row['Causale']} ({row['Importo']}€)" for i, row in df.iterrows()]
+        spesa_da_mod = st.selectbox("Seleziona la spesa da modificare", opzioni_modifica, key="sel_mod")
+        
+        # 1. Estraiamo l'indice dal menu a tendina
+        indice_mod_selezionato = int(spesa_da_mod.split(" ")[1])
+        
+        # 2. Pulsante esplicito per forzare il caricamento
+        if st.button("🔄 Carica Dati per questa spesa"):
+            st.session_state["indice_in_modifica"] = indice_mod_selezionato
+            
+        # 3. Mostriamo i campi di testo SOLO dopo aver cliccato il pulsante e salvato la scelta
+        if "indice_in_modifica" in st.session_state:
+            indice_mod = st.session_state["indice_in_modifica"]
+            riga_attuale = df.loc[indice_mod]
+            
+            st.info(f"Stai modificando i dati della **Riga {indice_mod}** (Premi 'Carica Dati' in alto se cambi spesa nel menu)")
+            
+            # --- LOGICA DI LETTURA PARTECIPANTI E QUOTE ATTUALI ---
+            partecipanti_str = str(riga_attuale["Partecipanti"])
+            is_custom = ":" in partecipanti_str
+            
+            quote_esistenti = {}
+            partecipanti_esistenti = []
+            
+            if is_custom:
+                for item in partecipanti_str.split(","):
+                    if ":" in item:
+                        nome, quota = item.split(":")
+                        quote_esistenti[nome.strip()] = float(quota)
+                        partecipanti_esistenti.append(nome.strip())
+            else:
+                partecipanti_esistenti = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip()]
+            
+            default_partecipanti = [p for p in partecipanti_esistenti if p in partecipanti]
+            
+            # --- INTERFACCIA DATI BASE ---
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                idx_pagante = partecipanti.index(riga_attuale["Pagante"]) if riga_attuale["Pagante"] in partecipanti else 0
+                nuovo_pagante = st.selectbox("Pagante", partecipanti, index=idx_pagante, key=f"mod_pag_{indice_mod}")
+                nuovo_importo = st.number_input("Importo (€)", min_value=0.0, step=0.5, value=float(riga_attuale["Importo"]), key=f"mod_imp_{indice_mod}")
+            with col_m2:
+                nuova_causale = st.text_input("Causale", value=str(riga_attuale["Causale"]), key=f"mod_caus_{indice_mod}")
+                nuova_categoria = st.text_input("Categoria", value=str(riga_attuale.get("Categoria", "")), key=f"mod_cat_{indice_mod}")
+            
+            # --- INTERFACCIA GESTIONE AVANZATA PARTECIPANTI ---
+            st.write("👥 **Gestione Partecipanti e Quote**")
+            tipo_div = st.radio("Come dividere la spesa?", ["In parti uguali", "Quote personalizzate"], index=1 if is_custom else 0, key=f"mod_tipo_div_{indice_mod}")
+            
+            nuovi_partecipanti = st.multiselect("Partecipanti coinvolti", partecipanti, default=default_partecipanti, key=f"mod_part_{indice_mod}")
+            
+            nuova_stringa_partecipanti = ""
+            
+            if tipo_div == "In parti uguali":
+                nuova_stringa_partecipanti = ", ".join(nuovi_partecipanti)
+            else:
+                st.caption("Inserisci o modifica la quota esatta per ogni partecipante:")
+                quote_aggiornate = {}
+                cols = st.columns(3)
+                for i, p in enumerate(nuovi_partecipanti):
+                    valore_default = quote_esistenti.get(p, 0.0)
+                    with cols[i % 3]:
+                        quote_aggiornate[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=float(valore_default), key=f"mod_quota_{p}_{indice_mod}")
+                
+                nuova_stringa_partecipanti = ", ".join([f"{p}:{quote_aggiornate[p]}" for p in nuovi_partecipanti])
+                
+                somma_quote = sum(quote_aggiornate.values())
+                if abs(somma_quote - nuovo_importo) > 0.01:
+                    st.warning(f"⚠️ Attenzione: la somma delle quote personalizzate ({somma_quote:.2f} €) non coincide con l'importo totale ({nuovo_importo:.2f} €).")
+                elif len(nuovi_partecipanti) > 0:
+                    st.success("✅ La somma delle quote combacia con il totale.")
+
+            # --- SALVATAGGIO ---
+            col_mp1, col_mp2 = st.columns(2)
+            with col_mp1:
+                pwd_mod = st.text_input("Master Password per confermare", type="password", key=f"pwd_mod_{indice_mod}")
+            with col_mp2:
+                st.write("")
+                st.write("")
+                if st.button("Salva Modifiche", key=f"btn_salva_mod_{indice_mod}"):
+                    if pwd_mod == master_password:
+                        # Riscriviamo i dati aggiornati
+                        df.at[indice_mod, "Pagante"] = nuovo_pagante
+                        df.at[indice_mod, "Importo"] = nuovo_importo
+                        df.at[indice_mod, "Causale"] = nuova_causale
+                        if "Categoria" in df.columns:
+                            df.at[indice_mod, "Categoria"] = nuova_categoria
+                        df.at[indice_mod, "Partecipanti"] = nuova_stringa_partecipanti
+                        
+                        conn.update(spreadsheet=url_foglio, data=df)
+                        st.success("✏️ Spesa aggiornata con successo!")
+                        
+                        # Eliminiamo la memoria di modifica per "chiudere" l'editor
+                        del st.session_state["indice_in_modifica"]
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error("❌ Master Password errata!")
+    
+with tab_bilanci:
+    st.header("⚖️ Situazione Saldi e Rimborsi")
+
+    if not df.empty:
+        # 1. Inizializziamo i saldi a zero
+        saldi = {persona: 0.0 for persona in partecipanti}
+
+        for index, riga in df.iterrows():
+            pagante = riga["Pagante"]
+            importo = float(riga["Importo"])
+            partecipanti_str = str(riga["Partecipanti"])
+            
+            # Il pagante va in positivo dell'intero importo sborsato
+            if pagante in saldi:
+                saldi[pagante] += importo
+            
+            # Controlliamo se è una spesa con quote personalizzate (c'è il ':')
+            if ":" in partecipanti_str:
+                # Es: "Michele:15.5, Luisa:10.0"
+                voci = partecipanti_str.split(",")
+                for voce in voci:
+                    if ":" in voce:
+                        nome_debitore, quota_str = voce.split(":")
+                        nome_debitore = nome_debitore.strip()
+                        quota = float(quota_str)
+                        if nome_debitore in saldi:
+                            saldi[nome_debitore] -= quota
+            else:
+                # Es: "Michele, Luisa" (Divisione alla romana corretta al centesimo)
+                lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                num_debitori = len(lista_debitori)
+                
+                if num_debitori > 0:
+                    # Trasformiamo l'importo in centesimi interi (es. 3.50 -> 350)
+                    importo_cents = int(round(importo * 100))
+                    
+                    # Calcoliamo la quota base e il resto
+                    quota_base_cents = importo_cents // num_debitori # Divisione senza virgola (es. 43)
+                    resto_cents = importo_cents % num_debitori       # Il resto (es. 6 centesimi)
+                    
+                    for i, debitore in enumerate(lista_debitori):
+                        # Diamo 1 centesimo extra ai primi della lista per smaltire il resto
+                        centesimi_extra = 1 if i < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                        
+                        if debitore in saldi:
+                            saldi[debitore] -= quota_finale
+
+        # Mostriamo il resoconto netto
+        st.subheader("1. Bilancio Netto")
+        for persona, saldo in saldi.items():
+            saldo_arrotondato = round(saldo, 2)
+            if saldo_arrotondato > 0.01:
+                st.success(f"🟩 **{persona}** è in credito di {saldo_arrotondato}€")
+            elif saldo_arrotondato < -0.01:
+                st.error(f"🟥 **{persona}** è in debito di {abs(saldo_arrotondato)}€")
+
+        st.divider()
+
+        # 2. Algoritmo "Semplifica Debiti"
+        st.subheader("2. Semplifica Debiti (Chi paga chi)")
+        
+        # Separiamo chi deve ricevere (creditori) da chi deve dare (debitori)
+        creditori = []
+        debitori = []
+        for persona, saldo in saldi.items():
+            if saldo > 0.01:
+                creditori.append([persona, saldo])
+            elif saldo < -0.01:
+                debitori.append([persona, abs(saldo)])
+                
+        # Ordiniamo per facilitare gli incroci (dal debito/credito più alto al più basso)
+        creditori.sort(key=lambda x: x[1], reverse=True)
+        debitori.sort(key=lambda x: x[1], reverse=True)
+        
+        transazioni = []
+        i = 0 # Indice creditori
+        j = 0 # Indice debitori
+        
+        while i < len(creditori) and j < len(debitori):
+            cred_nome, cred_importo = creditori[i]
+            deb_nome, deb_importo = debitori[j]
+            
+            # L'importo da scambiare è il minimo tra il debito e il credito
+            importo_scambiato = min(cred_importo, deb_importo)
+            importo_scambiato = round(importo_scambiato, 2)
+            
+            transazioni.append((deb_nome, cred_nome, importo_scambiato))
+            
+            # Aggiorniamo i saldi residui dopo questa transazione virtuale
+            creditori[i][1] -= importo_scambiato
+            debitori[j][1] -= importo_scambiato
+            
+            # Se il creditore o il debitore ha azzerato il suo conto, passiamo al prossimo
+            if creditori[i][1] < 0.01:
+                i += 1
+            if debitori[j][1] < 0.01:
+                j += 1
+
+        # Mostriamo i risultati
+        if len(transazioni) > 0:
+            for da, a, cifra in transazioni:
+                st.warning(f"💸 **{da}** deve dare **{cifra}€** a **{a}**")
+        else:
+            st.info("🎉 I conti sono in pari! Nessuno deve dare soldi a nessuno.")
+            
+    else:
+        st.info("Nessuna spesa registrata finora.")
+
+with tab_statistiche:
+    st.header("📊 Statistiche Spese")
+    
+    if not df.empty:
+        # Assicuriamoci che gli importi siano letti come numeri
+        df["Importo"] = pd.to_numeric(df["Importo"])
+        
+        # --- FILTRO RIMBORSI ---
+        # Creiamo un dataframe per le statistiche escludendo i rimborsi
+        if "Categoria" in df.columns:
+            df["Categoria"] = df["Categoria"].fillna("Altro")
+            # Escludiamo le righe dove la categoria contiene la parola "rimbors"
+            df_stat = df[~df["Categoria"].str.lower().str.contains("rimbors", na=False)].copy()
+        else:
+            df_stat = df.copy()
+
+        st.caption("Le statistiche escludono automaticamente la categoria 'Rimborsi'.")
+        
+        # 1. Metrica: Totale Speso Reale
+        totale_viaggio = df_stat["Importo"].sum()
+        st.metric(label="💰 Totale speso dal gruppo (esclusi rimborsi)", value=f"{totale_viaggio:.2f} €")
+        
+        st.divider()
+        
+# --- SPESA REALE ATTRIBUITA PER CATEGORIA (STACKED BAR E TABELLA) ---
+        st.subheader("🎯 Spesa Reale Attribuita per Categoria")
+        st.write("Il dettaglio di quanto ha speso ogni persona, diviso per tipologia:")
+        
+        consumi_dettagliati = []
+        
+        # 1. Calcoliamo le quote di tutti riga per riga
+        for index, riga in df_stat.iterrows():
+            importo = float(riga["Importo"])
+            cat = riga["Categoria"] if "Categoria" in df_stat.columns else "Altro"
+            partecipanti_str = str(riga["Partecipanti"])
+            
+            if ":" in partecipanti_str:
+                # Quote personalizzate
+                voci = partecipanti_str.split(",")
+                for voce in voci:
+                    if ":" in voce:
+                        nome_debitore, quota_str = voce.split(":")
+                        nome_debitore = nome_debitore.strip()
+                        consumi_dettagliati.append({"Persona": nome_debitore, "Categoria": cat, "Importo": float(quota_str)})
+            else:
+                # Divisione alla romana (con logica del centesimo fantasma per pareggiare i conti)
+                lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                num_debitori = len(lista_debitori)
+                
+                if num_debitori > 0:
+                    importo_cents = int(round(importo * 100))
+                    quota_base_cents = importo_cents // num_debitori
+                    resto_cents = importo_cents % num_debitori
+                    
+                    for i, debitore in enumerate(lista_debitori):
+                        centesimi_extra = 1 if i < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                        consumi_dettagliati.append({"Persona": debitore, "Categoria": cat, "Importo": quota_finale})
+        
+        # 2. Raggruppiamo i dati e generiamo Grafico + Tabella
+        if consumi_dettagliati:
+            # Creiamo il dataframe
+            df_consumi_det = pd.DataFrame(consumi_dettagliati)
+            df_raggruppato = df_consumi_det.groupby(["Persona", "Categoria"])["Importo"].sum().reset_index()
+            df_raggruppato["Importo"] = df_raggruppato["Importo"].round(2)
+            
+            # --- GRAFICO A COLONNE IN PILA CON PLOTLY ---
+            fig_stacked = px.bar(
+                df_raggruppato, 
+                x="Persona", 
+                y="Importo", 
+                color="Categoria", 
+                text="Importo",
+                barmode="stack" # Costringe i blocchi a impilarsi in una singola colonna
+            )
+            
+            # Miglioriamo l'estetica del grafico
+            fig_stacked.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", 
+                plot_bgcolor="rgba(0,0,0,0)",
+                xaxis_title="",
+                yaxis_title="Euro (€)",
+                legend_title_text="Categoria"
+            )
+            fig_stacked.update_traces(textposition='inside', textfont=dict(color='white'))
+            
+            # Mostriamo il grafico
+            st.plotly_chart(fig_stacked, use_container_width=True)
+            
+            st.divider()
+            
+            # --- TABELLA DETTAGLIATA ---
+            st.write("📋 *Dettaglio in Tabella*")
+            
+            # Creiamo la tabella "pivot"
+            df_pivot = df_raggruppato.pivot(index="Persona", columns="Categoria", values="Importo").fillna(0)
+            
+            # Aggiungiamo il Totale per persona e ordiniamo
+            df_pivot["Totale (€)"] = df_pivot.sum(axis=1)
+            df_pivot = df_pivot.sort_values(by="Totale (€)", ascending=False)
+            
+            # Mostriamo la tabella formattata
+            st.dataframe(df_pivot.style.format("{:.2f} €"), use_container_width=True)            
+        # 3. Grafico a TORTA per le Categorie
+        st.subheader("🛍️ In cosa stiamo spendendo?")
+        if "Categoria" in df_stat.columns:
+            spese_per_categoria = df_stat.groupby("Categoria")["Importo"].sum().reset_index()
+            
+            fig = px.pie(spese_per_categoria, values='Importo', names='Categoria', hole=0.4)
+            fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True)
+            
+    else:
+        st.info("Inizia ad aggiungere qualche spesa per vedere i grafici!")
