@@ -232,6 +232,134 @@ with tab_spese:
                 st.info(f"💡 Il totale complessivo addebitato in queste spese è di {totale_quote:.2f} €")
         else:
             st.warning(f"{persona_selezionata} non ha quote a suo carico (Rimborsi esclusi).")
+
+    st.divider()
+    st.subheader("⚖️ Confronto Spese tra Partecipanti")
+    st.write("Scegli due persone e filtra le categorie per confrontare l'esatto importo addebitato a ciascuno (Rimborsi esclusi).")
+
+    if not df.empty:
+        # --- FILTRO RIMBORSI E LETTURA CATEGORIE ---
+        if "Categoria" in df.columns:
+            df_confronto = df[~df["Categoria"].str.lower().str.contains("rimbors", na=False)].copy()
+            categorie_disponibili = sorted(df_confronto["Categoria"].dropna().unique().tolist())
+        else:
+            df_confronto = df.copy()
+            categorie_disponibili = ["Altro"]
+            
+        # --- MENU DI SELEZIONE ---
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            persona1 = st.selectbox("Prima persona", partecipanti, index=0, key="vs_p1")
+        with col_c2:
+            # Impostiamo l'indice a 1 di default per non selezionare la stessa persona due volte
+            persona2 = st.selectbox("Seconda persona", partecipanti, index=1 if len(partecipanti) > 1 else 0, key="vs_p2")
+            
+        categorie_selezionate = st.multiselect(
+            "Seleziona le categorie da confrontare:", 
+            categorie_disponibili, 
+            default=categorie_disponibili, 
+            key="vs_cat"
+        )
+        
+        # --- CONTROLLI DI SICUREZZA ---
+        if persona1 == persona2:
+            st.warning("⚠️ Seleziona due persone diverse per avviare il confronto.")
+        elif not categorie_selezionate:
+            st.warning("⚠️ Seleziona almeno una categoria dal menu.")
+        else:
+            # --- CALCOLO DELLE QUOTE (Logica Centesimo Fantasma) ---
+            dati_confronto = []
+            
+            for index, riga in df_confronto.iterrows():
+                cat = riga.get("Categoria", "Altro")
+                
+                # Saltiamo la riga se la categoria non è tra quelle selezionate
+                if cat not in categorie_selezionate:
+                    continue
+                    
+                importo_totale = float(riga["Importo"])
+                partecipanti_str = str(riga["Partecipanti"])
+                
+                # Inizializziamo a zero per questa specifica riga
+                quote_riga = {persona1: 0.0, persona2: 0.0}
+                
+                if ":" in partecipanti_str:
+                    # Quote personalizzate
+                    voci = partecipanti_str.split(",")
+                    for voce in voci:
+                        if ":" in voce:
+                            nome_debitore, quota_str = voce.split(":")
+                            nome_debitore = nome_debitore.strip()
+                            if nome_debitore in quote_riga:
+                                quote_riga[nome_debitore] = float(quota_str)
+                else:
+                    # Divisione alla romana
+                    lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                    num_debitori = len(lista_debitori)
+                    
+                    if num_debitori > 0:
+                        importo_cents = int(round(importo_totale * 100))
+                        quota_base_cents = importo_cents // num_debitori
+                        resto_cents = importo_cents % num_debitori
+                        
+                        for p in [persona1, persona2]:
+                            if p in lista_debitori:
+                                indice_persona = lista_debitori.index(p)
+                                centesimi_extra = 1 if indice_persona < resto_cents else 0
+                                quote_riga[p] = (quota_base_cents + centesimi_extra) / 100.0
+                
+                # Salviamo i dati finali
+                for p in [persona1, persona2]:
+                    if quote_riga[p] > 0:
+                        dati_confronto.append({"Persona": p, "Categoria": cat, "Importo": quote_riga[p]})
+            
+            # --- CREAZIONE GRAFICO E TABELLA ---
+            if dati_confronto:
+                df_vs = pd.DataFrame(dati_confronto)
+                # Sommiamo gli importi per categoria e per persona
+                df_vs_grouped = df_vs.groupby(["Persona", "Categoria"])["Importo"].sum().reset_index()
+                df_vs_grouped["Importo"] = df_vs_grouped["Importo"].round(2)
+                
+                # 1. Grafico Plotly (barmode="group" per affiancare le colonne)
+                fig_vs = px.bar(
+                    df_vs_grouped,
+                    x="Categoria",
+                    y="Importo",
+                    color="Persona",
+                    barmode="group",
+                    text="Importo"
+                )
+                
+                fig_vs.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    yaxis_title="Euro (€)",
+                    xaxis_title="",
+                    legend_title_text="Partecipante"
+                )
+                # Testo fuori dalla colonna per maggiore leggibilità
+                fig_vs.update_traces(textposition='outside', texttemplate='%{text:.2f} €')
+                
+                st.plotly_chart(fig_vs, use_container_width=True)
+                
+                # 2. Tabella Pivot Riassuntiva
+                st.write("📊 **Dettaglio Differenze**")
+                # Creiamo la tabella con le categorie sulle righe e le persone sulle colonne
+                df_pivot_vs = df_vs_grouped.pivot(index="Categoria", columns="Persona", values="Importo").fillna(0)
+                
+                # Assicuriamoci che entrambe le colonne esistano (nel caso uno dei due non abbia speso nulla)
+                if persona1 not in df_pivot_vs.columns:
+                    df_pivot_vs[persona1] = 0.0
+                if persona2 not in df_pivot_vs.columns:
+                    df_pivot_vs[persona2] = 0.0
+                    
+                # Calcoliamo chi ha speso di più e la differenza assoluta
+                df_pivot_vs["Differenza (€)"] = abs(df_pivot_vs[persona1] - df_pivot_vs[persona2])
+                
+                st.dataframe(df_pivot_vs.style.format("{:.2f} €"), use_container_width=True)
+                
+            else:
+                st.info("Non ci sono spese da mostrare per queste due persone nelle categorie selezionate.")
             
     st.divider()
     st.subheader("🗑️ Elimina una spesa")
