@@ -51,101 +51,101 @@ with tab_spese:
 
     st.header("➕ Aggiungi Nuova Spesa")
     
-# Usiamo un container normale invece del form per avere l'aggiornamento in tempo reale
-col1, col2 = st.columns(2)
+    # Usiamo un container normale invece del form per avere l'aggiornamento in tempo reale
+    col1, col2 = st.columns(2)
 
-with col1:
-    st.write("💳 **Chi ha anticipato i soldi?**")
-    paganti_selezionati = st.multiselect("Seleziona chi ha pagato", partecipanti, default=[partecipanti[0]], key="new_paganti")
-    tipo_div_pag = st.radio("Come hanno diviso l'anticipo?", ["In parti uguali", "Quote personalizzate"], key="new_tipo_div_pag")
-    
-    nuovo_importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, value=0.0, key="new_imp")
-    
-    stringa_paganti = ""
-    if tipo_div_pag == "In parti uguali":
-        stringa_paganti = ", ".join(paganti_selezionati)
-    else:
-        st.caption("Inserisci la quota esatta anticipata da ciascuno:")
-        quote_pag = {}
-        # Usiamo colonne interne per affiancare gli input numerici
-        cols_pag = st.columns(3)
-        for i, p in enumerate(paganti_selezionati):
-            with cols_pag[i % 3]:
-                quote_pag[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=0.0, key=f"new_qpag_{p}")
+    with col1:
+        st.write("💳 **Chi ha anticipato i soldi?**")
+        paganti_selezionati = st.multiselect("Seleziona chi ha pagato", partecipanti, default=[partecipanti[0]], key="new_paganti")
+        tipo_div_pag = st.radio("Come hanno diviso l'anticipo?", ["In parti uguali", "Quote personalizzate"], key="new_tipo_div_pag")
         
-        stringa_paganti = ", ".join([f"{p}:{quote_pag[p]}" for p in paganti_selezionati])
+        nuovo_importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, value=0.0, key="new_imp")
         
-        somma_pagata = sum(quote_pag.values())
-        if abs(somma_pagata - nuovo_importo) > 0.01:
-            st.warning(f"⚠️ Attenzione: la somma degli anticipi ({somma_pagata:.2f} €) non coincide con l'importo ({nuovo_importo:.2f} €).")
-
-with col2:
-    st.write("🛒 **Dettagli Spesa**")
-    # Qui sotto metterai i campi per Causale, Categoria e chi partecipa alla spesa (i debitori)
-    causale = st.text_input("Causale (es. Benzina, Cena)")
-        
-    # --- NUOVA LOGICA CATEGORIE ---
-    # Leggiamo le categorie già usate dal foglio (se esistono) ignorando le celle vuote
-    categorie_esistenti = list(df["Categoria"].dropna().unique()) if "Categoria" in df.columns else []
-    scelta_cat = st.selectbox("Macrocategoria", ["➕ Aggiungi nuova..."] + categorie_esistenti)
-    
-    if scelta_cat == "➕ Aggiungi nuova...":
-        categoria = st.text_input("Scrivi la nuova categoria (es. Carburante, Cibo)")
-    else:
-        categoria = scelta_cat
-    # ------------------------------
-    
-    diviso_tra = st.multiselect("Coinvolti nella spesa", partecipanti, default=partecipanti)
-
-    divisione_uguale = st.checkbox("Dividi in parti uguali", value=True)
-    
-    quote_personalizzate = {}
-    if not divisione_uguale and len(diviso_tra) > 0:
-        st.write("Inserisci la quota esatta per ogni persona:")
-        col_q1, col_q2 = st.columns(2)
-        for i, persona in enumerate(diviso_tra):
-            # Alterniamo le colonne per estetica
-            if i % 2 == 0:
-                with col_q1:
-                    quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
-            else:
-                with col_q2:
-                    quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
-
-    if st.button("Inserisci Spesa", type="primary"):
-        if causale and importo > 0 and len(diviso_tra) > 0:
-            
-            # Controllo validità quote personalizzate
-            if not divisione_uguale:
-                somma_quote = sum(quote_personalizzate.values())
-                # Usiamo una tolleranza minima per evitare problemi di arrotondamento di Python
-                if abs(somma_quote - importo) > 0.01:
-                    st.error(f"⚠️ Attenzione! La somma delle quote ({somma_quote}€) non coincide con il totale ({importo}€).")
-                    st.stop()
-                
-                # Salviamo le quote nel formato "Nome:10.5, Nome2:5.0"
-                stringa_partecipanti = ", ".join([f"{p}:{q}" for p, q in quote_personalizzate.items()])
-            else:
-                # Formato standard per la divisione alla romana
-                stringa_partecipanti = ", ".join(diviso_tra)
-
-            nuova_spesa = pd.DataFrame([{
-                "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Pagante": pagante,
-                "Importo": importo,
-                "Causale": causale,
-                "Partecipanti": stringa_partecipanti,
-                "Categoria": categoria
-            }])
-            
-            df_aggiornato = nuova_spesa if df.empty else pd.concat([df, nuova_spesa], ignore_index=True)
-            conn.update(spreadsheet=url_foglio, data=df_aggiornato)
-            
-            st.success("✅ Spesa registrata!")
-            st.cache_data.clear()
-            st.rerun()
+        stringa_paganti = ""
+        if tipo_div_pag == "In parti uguali":
+            stringa_paganti = ", ".join(paganti_selezionati)
         else:
-            st.error("⚠️ Compila tutti i campi richiesti.")
+            st.caption("Inserisci la quota esatta anticipata da ciascuno:")
+            quote_pag = {}
+            # Usiamo colonne interne per affiancare gli input numerici
+            cols_pag = st.columns(3)
+            for i, p in enumerate(paganti_selezionati):
+                with cols_pag[i % 3]:
+                    quote_pag[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=0.0, key=f"new_qpag_{p}")
+            
+            stringa_paganti = ", ".join([f"{p}:{quote_pag[p]}" for p in paganti_selezionati])
+            
+            somma_pagata = sum(quote_pag.values())
+            if abs(somma_pagata - nuovo_importo) > 0.01:
+                st.warning(f"⚠️ Attenzione: la somma degli anticipi ({somma_pagata:.2f} €) non coincide con l'importo ({nuovo_importo:.2f} €).")
+
+    with col2:
+        st.write("🛒 **Dettagli Spesa**")
+        # Qui sotto metterai i campi per Causale, Categoria e chi partecipa alla spesa (i debitori)
+        causale = st.text_input("Causale (es. Benzina, Cena)")
+            
+        # --- NUOVA LOGICA CATEGORIE ---
+        # Leggiamo le categorie già usate dal foglio (se esistono) ignorando le celle vuote
+        categorie_esistenti = list(df["Categoria"].dropna().unique()) if "Categoria" in df.columns else []
+        scelta_cat = st.selectbox("Macrocategoria", ["➕ Aggiungi nuova..."] + categorie_esistenti)
+        
+        if scelta_cat == "➕ Aggiungi nuova...":
+            categoria = st.text_input("Scrivi la nuova categoria (es. Carburante, Cibo)")
+        else:
+            categoria = scelta_cat
+        # ------------------------------
+        
+        diviso_tra = st.multiselect("Coinvolti nella spesa", partecipanti, default=partecipanti)
+
+        divisione_uguale = st.checkbox("Dividi in parti uguali", value=True)
+        
+        quote_personalizzate = {}
+        if not divisione_uguale and len(diviso_tra) > 0:
+            st.write("Inserisci la quota esatta per ogni persona:")
+            col_q1, col_q2 = st.columns(2)
+            for i, persona in enumerate(diviso_tra):
+                # Alterniamo le colonne per estetica
+                if i % 2 == 0:
+                    with col_q1:
+                        quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
+                else:
+                    with col_q2:
+                        quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
+
+        if st.button("Inserisci Spesa", type="primary"):
+            if causale and importo > 0 and len(diviso_tra) > 0:
+                
+                # Controllo validità quote personalizzate
+                if not divisione_uguale:
+                    somma_quote = sum(quote_personalizzate.values())
+                    # Usiamo una tolleranza minima per evitare problemi di arrotondamento di Python
+                    if abs(somma_quote - importo) > 0.01:
+                        st.error(f"⚠️ Attenzione! La somma delle quote ({somma_quote}€) non coincide con il totale ({importo}€).")
+                        st.stop()
+                    
+                    # Salviamo le quote nel formato "Nome:10.5, Nome2:5.0"
+                    stringa_partecipanti = ", ".join([f"{p}:{q}" for p, q in quote_personalizzate.items()])
+                else:
+                    # Formato standard per la divisione alla romana
+                    stringa_partecipanti = ", ".join(diviso_tra)
+
+                nuova_spesa = pd.DataFrame([{
+                    "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Pagante": pagante,
+                    "Importo": importo,
+                    "Causale": causale,
+                    "Partecipanti": stringa_partecipanti,
+                    "Categoria": categoria
+                }])
+                
+                df_aggiornato = nuova_spesa if df.empty else pd.concat([df, nuova_spesa], ignore_index=True)
+                conn.update(spreadsheet=url_foglio, data=df_aggiornato)
+                
+                st.success("✅ Spesa registrata!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("⚠️ Compila tutti i campi richiesti.")
 
     st.divider()
     st.header("💸 Riepilogo Spese")
