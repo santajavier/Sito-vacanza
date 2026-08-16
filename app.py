@@ -48,15 +48,42 @@ except Exception as e:
 tab_spese, tab_bilanci, tab_statistiche = st.tabs(["💸 Spese", "⚖️ Bilanci", "📊 Statistiche"])
 
 with tab_spese:
-    st.header("Aggiungi una nuova spesa")
+
+    st.header("➕ Aggiungi Nuova Spesa")
     
-    # Usiamo un container normale invece del form, per avere l'aggiornamento in tempo reale dei campi
-    st.subheader("Nuova Spesa")
-    col1, col2 = st.columns(2)
+# Usiamo un container normale invece del form per avere l'aggiornamento in tempo reale
+col1, col2 = st.columns(2)
+
+with col1:
+    st.write("💳 **Chi ha anticipato i soldi?**")
+    paganti_selezionati = st.multiselect("Seleziona chi ha pagato", partecipanti, default=[partecipanti[0]], key="new_paganti")
+    tipo_div_pag = st.radio("Come hanno diviso l'anticipo?", ["In parti uguali", "Quote personalizzate"], key="new_tipo_div_pag")
     
-    with col1:
-        pagante = st.selectbox("Chi ha pagato?", partecipanti)
-        importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, format="%.2f")
+    nuovo_importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, value=0.0, key="new_imp")
+    
+    stringa_paganti = ""
+    if tipo_div_pag == "In parti uguali":
+        stringa_paganti = ", ".join(paganti_selezionati)
+    else:
+        st.caption("Inserisci la quota esatta anticipata da ciascuno:")
+        quote_pag = {}
+        # Usiamo colonne interne per affiancare gli input numerici
+        cols_pag = st.columns(3)
+        for i, p in enumerate(paganti_selezionati):
+            with cols_pag[i % 3]:
+                quote_pag[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=0.0, key=f"new_qpag_{p}")
+        
+        stringa_paganti = ", ".join([f"{p}:{quote_pag[p]}" for p in paganti_selezionati])
+        
+        somma_pagata = sum(quote_pag.values())
+        if abs(somma_pagata - nuovo_importo) > 0.01:
+            st.warning(f"⚠️ Attenzione: la somma degli anticipi ({somma_pagata:.2f} €) non coincide con l'importo ({nuovo_importo:.2f} €).")
+
+with col2:
+    st.write("🛒 **Dettagli Spesa**")
+    # Qui sotto metterai i campi per Causale, Categoria e chi partecipa alla spesa (i debitori)
+    # ...
+        
     with col2:
         causale = st.text_input("Causale (es. Benzina, Cena)")
         
