@@ -614,9 +614,8 @@ with tab_bilanci:
         st.subheader("📊 Situazione Attuale")
         df_bilanci = pd.DataFrame(list(bilanci.items()), columns=["Partecipante", "Saldo"])
         
-        # Aggiungiamo un colore verde per chi è in credito, rosso per chi è in debito
+        # Grafico a barre
         df_bilanci["Colore"] = df_bilanci["Saldo"].apply(lambda x: "Credito" if x > 0 else ("Debito" if x < 0 else "Pari"))
-        
         fig_saldi = px.bar(
             df_bilanci, 
             x="Partecipante", 
@@ -625,32 +624,49 @@ with tab_bilanci:
             color_discrete_map={"Credito": "#2ecc71", "Debito": "#e74c3c", "Pari": "#95a5a6"},
             text="Saldo"
         )
-        fig_saldi.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis_title="Euro (€)")
+        fig_saldi.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis_title="Euro (€)", showlegend=False)
         fig_saldi.update_traces(texttemplate='%{text:.2f} €', textposition='outside')
         st.plotly_chart(fig_saldi, use_container_width=True)
+
+        # --- NUOVA TABELLA CON COLORI DINAMICI ---
+        st.write("📋 **Dettaglio Saldi**")
+        
+        def colora_saldo(valore):
+            """Applica il testo verde se positivo, rosso se negativo"""
+            if valore > 0.01:
+                colore = '#2ecc71' # Verde
+            elif valore < -0.01:
+                colore = '#e74c3c' # Rosso
+            else:
+                colore = '#ffffff' # Bianco/Neutro
+            return f'color: {colore}; font-weight: bold;'
+            
+        # Mostriamo la tabella applicando lo stile solo alla colonna 'Saldo'
+        st.dataframe(
+            df_bilanci[["Partecipante", "Saldo"]].style
+            .map(colora_saldo, subset=["Saldo"])
+            .format({"Saldo": "{:.2f} €"}),
+            use_container_width=True
+        )
 
         st.divider()
 
         # 4. ALGORITMO DI RISOLUZIONE DEI DEBITI (Chi paga chi)
         st.subheader("💸 Come pareggiare i conti")
         
-        # Dividiamo le persone in debitori (saldo negativo) e creditori (saldo positivo)
         debitori = [{"nome": k, "importo": -v} for k, v in bilanci.items() if v < -0.01]
         creditori = [{"nome": k, "importo": v} for k, v in bilanci.items() if v > 0.01]
         
-        # Ordiniamo dal più grande al più piccolo per ottimizzare le transazioni
         debitori = sorted(debitori, key=lambda x: x["importo"], reverse=True)
         creditori = sorted(creditori, key=lambda x: x["importo"], reverse=True)
         
         transazioni = []
         i, j = 0, 0
         
-        # Ciclo finché ci sono sia debiti che crediti da saldare
         while i < len(debitori) and j < len(creditori):
             deb = debitori[i]
             cred = creditori[j]
             
-            # L'importo da scambiare è il minimo tra quello che Tizio deve e quello che Caio aspetta
             importo_transazione = min(deb["importo"], cred["importo"])
             
             transazioni.append({
@@ -659,28 +675,31 @@ with tab_bilanci:
                 "Importo": round(importo_transazione, 2)
             })
             
-            # Aggiorniamo i saldi temporanei
             deb["importo"] -= importo_transazione
             cred["importo"] -= importo_transazione
             
-            # Se il debitore ha saldato, passiamo al prossimo debitore
             if deb["importo"] < 0.01:
                 i += 1
-            # Se il creditore è stato ripagato in toto, passiamo al prossimo creditore
             if cred["importo"] < 0.01:
                 j += 1
                 
-        # Mostriamo le transazioni finali
+        # --- BOX GIALLI PERSONALIZZATI PER LE TRANSAZIONI ---
         if transazioni:
             for t in transazioni:
-                st.success(f"**{t['Da']}** deve dare **{t['Importo']:.2f} €** a **{t['A']}**")
+                testo_transazione = f"{t['Da']} deve dare {t['Importo']:.2f} € a {t['A']}"
+                
+                # Creiamo un div HTML con sfondo giallo chiaro e testo giallo scuro/arancio
+                box_giallo = f"""
+                <div style="background-color: #fff9c4; color: #b7950b; padding: 12px; 
+                            border-radius: 8px; margin-bottom: 8px; font-weight: bold; 
+                            border: 1px solid #f1c40f; text-align: center; font-size: 16px;">
+                    🔄 {testo_transazione}
+                </div>
+                """
+                st.markdown(box_giallo, unsafe_allow_html=True)
         else:
-            st.info("🎉 I conti sono perfettamente in pareggio! Nessuno deve soldi a nessuno.")
-            
-    else:
-        st.info("Aggiungi delle spese per vedere il bilancio.")
+            st.success("🎉 I conti sono perfettamente in pareggio! Nessuno deve soldi a nessuno.")
 
-        
 with tab_statistiche:
     st.header("📊 Statistiche Spese")
     
