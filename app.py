@@ -614,6 +614,9 @@ with tab_bilanci:
         st.subheader("📊 Situazione Attuale")
         df_bilanci = pd.DataFrame(list(bilanci.items()), columns=["Partecipante", "Saldo"])
         
+        # --- ORDINA DAL PIÙ IN CREDITO AL PIÙ IN DEBITO ---
+        df_bilanci = df_bilanci.sort_values(by="Saldo", ascending=False).reset_index(drop=True)
+        
         # Grafico a barre
         df_bilanci["Colore"] = df_bilanci["Saldo"].apply(lambda x: "Credito" if x > 0 else ("Debito" if x < 0 else "Pari"))
         fig_saldi = px.bar(
@@ -625,10 +628,13 @@ with tab_bilanci:
             text="Saldo"
         )
         fig_saldi.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis_title="Euro (€)", showlegend=False)
-        fig_saldi.update_traces(texttemplate='%{text:.2f} €', textposition='outside')
+        
+        # --- AUMENTA LA DIMENSIONE DEL FONT DEI NUMERI (textfont_size=16) ---
+        fig_saldi.update_traces(texttemplate='%{text:.2f} €', textposition='outside', textfont_size=16)
+        
         st.plotly_chart(fig_saldi, use_container_width=True)
 
-        # --- NUOVA TABELLA CON COLORI DINAMICI ---
+        # --- NUOVA TABELLA CON COLORI DINAMICI (ORA ORDINATA) ---
         st.write("📋 **Dettaglio Saldi**")
         
         def colora_saldo(valore):
