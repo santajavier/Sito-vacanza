@@ -82,23 +82,20 @@ with col1:
 with col2:
     st.write("🛒 **Dettagli Spesa**")
     # Qui sotto metterai i campi per Causale, Categoria e chi partecipa alla spesa (i debitori)
-    # ...
+    causale = st.text_input("Causale (es. Benzina, Cena)")
         
-    with col2:
-        causale = st.text_input("Causale (es. Benzina, Cena)")
-        
-        # --- NUOVA LOGICA CATEGORIE ---
-        # Leggiamo le categorie già usate dal foglio (se esistono) ignorando le celle vuote
-        categorie_esistenti = list(df["Categoria"].dropna().unique()) if "Categoria" in df.columns else []
-        scelta_cat = st.selectbox("Macrocategoria", ["➕ Aggiungi nuova..."] + categorie_esistenti)
-        
-        if scelta_cat == "➕ Aggiungi nuova...":
-            categoria = st.text_input("Scrivi la nuova categoria (es. Carburante, Cibo)")
-        else:
-            categoria = scelta_cat
-        # ------------------------------
-        
-        diviso_tra = st.multiselect("Coinvolti nella spesa", partecipanti, default=partecipanti)
+    # --- NUOVA LOGICA CATEGORIE ---
+    # Leggiamo le categorie già usate dal foglio (se esistono) ignorando le celle vuote
+    categorie_esistenti = list(df["Categoria"].dropna().unique()) if "Categoria" in df.columns else []
+    scelta_cat = st.selectbox("Macrocategoria", ["➕ Aggiungi nuova..."] + categorie_esistenti)
+    
+    if scelta_cat == "➕ Aggiungi nuova...":
+        categoria = st.text_input("Scrivi la nuova categoria (es. Carburante, Cibo)")
+    else:
+        categoria = scelta_cat
+    # ------------------------------
+    
+    diviso_tra = st.multiselect("Coinvolti nella spesa", partecipanti, default=partecipanti)
 
     divisione_uguale = st.checkbox("Dividi in parti uguali", value=True)
     
