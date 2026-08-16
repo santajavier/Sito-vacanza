@@ -234,8 +234,8 @@ with tab_spese:
             st.warning(f"{persona_selezionata} non ha quote a suo carico (Rimborsi esclusi).")
 
     st.divider()
-    st.subheader("⚖️ Confronto Spese tra Partecipanti")
-    st.write("Scegli due persone e filtra le categorie per confrontare l'esatto importo addebitato a ciascuno (Rimborsi esclusi).")
+    st.subheader("⚖️ Confronto Puntuale Spese")
+    st.write("Verifica riga per riga gli importi addebitati a due persone per le categorie selezionate (Rimborsi esclusi).")
 
     if not df.empty:
         # --- FILTRO RIMBORSI E LETTURA CATEGORIE ---
@@ -249,16 +249,15 @@ with tab_spese:
         # --- MENU DI SELEZIONE ---
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            persona1 = st.selectbox("Prima persona", partecipanti, index=0, key="vs_p1")
+            persona1 = st.selectbox("Prima persona", partecipanti, index=0, key="vs_p1_puntuale")
         with col_c2:
-            # Impostiamo l'indice a 1 di default per non selezionare la stessa persona due volte
-            persona2 = st.selectbox("Seconda persona", partecipanti, index=1 if len(partecipanti) > 1 else 0, key="vs_p2")
+            persona2 = st.selectbox("Seconda persona", partecipanti, index=1 if len(partecipanti) > 1 else 0, key="vs_p2_puntuale")
             
         categorie_selezionate = st.multiselect(
             "Seleziona le categorie da confrontare:", 
             categorie_disponibili, 
             default=categorie_disponibili, 
-            key="vs_cat"
+            key="vs_cat_puntuale"
         )
         
         # --- CONTROLLI DI SICUREZZA ---
@@ -267,20 +266,20 @@ with tab_spese:
         elif not categorie_selezionate:
             st.warning("⚠️ Seleziona almeno una categoria dal menu.")
         else:
-            # --- CALCOLO DELLE QUOTE (Logica Centesimo Fantasma) ---
-            dati_confronto = []
+            dettagli_confronto = []
             
+            # --- CALCOLO QUOTE RIGA PER RIGA ---
             for index, riga in df_confronto.iterrows():
                 cat = riga.get("Categoria", "Altro")
                 
-                # Saltiamo la riga se la categoria non è tra quelle selezionate
+                # Filtro per categoria
                 if cat not in categorie_selezionate:
                     continue
                     
+                causale = riga["Causale"]
                 importo_totale = float(riga["Importo"])
                 partecipanti_str = str(riga["Partecipanti"])
                 
-                # Inizializziamo a zero per questa specifica riga
                 quote_riga = {persona1: 0.0, persona2: 0.0}
                 
                 if ":" in partecipanti_str:
@@ -293,7 +292,7 @@ with tab_spese:
                             if nome_debitore in quote_riga:
                                 quote_riga[nome_debitore] = float(quota_str)
                 else:
-                    # Divisione alla romana
+                    # Divisione alla romana (con centesimo fantasma)
                     lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
                     num_debitori = len(lista_debitori)
                     
@@ -308,58 +307,45 @@ with tab_spese:
                                 centesimi_extra = 1 if indice_persona < resto_cents else 0
                                 quote_riga[p] = (quota_base_cents + centesimi_extra) / 100.0
                 
-                # Salviamo i dati finali
-                for p in [persona1, persona2]:
-                    if quote_riga[p] > 0:
-                        dati_confronto.append({"Persona": p, "Categoria": cat, "Importo": quote_riga[p]})
+                # Inseriamo la riga nella tabella SOLO se almeno uno dei due è coinvolto nella spesa
+                if quote_riga[persona1] > 0 or quote_riga[persona2] > 0:
+                    dettagli_confronto.append({
+                        "Riga N.": index,
+                        "Causale": causale,
+                        "Categoria": cat,
+                        "Scontrino (€)": importo_totale,
+                        f"Quota {persona1} (€)": quote_riga[persona1],
+                        f"Quota {persona2} (€)": quote_riga[persona2]
+                    })
             
-            # --- CREAZIONE GRAFICO E TABELLA ---
-            if dati_confronto:
-                df_vs = pd.DataFrame(dati_confronto)
-                # Sommiamo gli importi per categoria e per persona
-                df_vs_grouped = df_vs.groupby(["Persona", "Categoria"])["Importo"].sum().reset_index()
-                df_vs_grouped["Importo"] = df_vs_grouped["Importo"].round(2)
+            # --- MOSTRA I RISULTATI ---
+            if dettagli_confronto:
+                df_vs_puntuale = pd.DataFrame(dettagli_confronto)
+                # Impostiamo la riga originale come indice per poter andare a ricontrollare facilmente
+                df_vs_puntuale.set_index("Riga N.", inplace=True)
                 
-                # 1. Grafico Plotly (barmode="group" per affiancare le colonne)
-                fig_vs = px.bar(
-                    df_vs_grouped,
-                    x="Categoria",
-                    y="Importo",
-                    color="Persona",
-                    barmode="group",
-                    text="Importo"
-                )
+                st.success(f"🧾 Trovate **{len(df_vs_puntuale)}** spese che coinvolgono {persona1} o {persona2}.")
                 
-                fig_vs.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    yaxis_title="Euro (€)",
-                    xaxis_title="",
-                    legend_title_text="Partecipante"
-                )
-                # Testo fuori dalla colonna per maggiore leggibilità
-                fig_vs.update_traces(textposition='outside', texttemplate='%{text:.2f} €')
+                # Formattiamo tutte le colonne numeriche in Euro
+                format_dict = {
+                    "Scontrino (€)": "{:.2f} €",
+                    f"Quota {persona1} (€)": "{:.2f} €",
+                    f"Quota {persona2} (€)": "{:.2f} €"
+                }
                 
-                st.plotly_chart(fig_vs, use_container_width=True)
+                st.dataframe(df_vs_puntuale.style.format(format_dict), use_container_width=True)
                 
-                # 2. Tabella Pivot Riassuntiva
-                st.write("📊 **Dettaglio Differenze**")
-                # Creiamo la tabella con le categorie sulle righe e le persone sulle colonne
-                df_pivot_vs = df_vs_grouped.pivot(index="Categoria", columns="Persona", values="Importo").fillna(0)
+                # Aggiungiamo un riepilogo rapido sotto la tabella
+                tot_p1 = df_vs_puntuale[f"Quota {persona1} (€)"].sum()
+                tot_p2 = df_vs_puntuale[f"Quota {persona2} (€)"].sum()
                 
-                # Assicuriamoci che entrambe le colonne esistano (nel caso uno dei due non abbia speso nulla)
-                if persona1 not in df_pivot_vs.columns:
-                    df_pivot_vs[persona1] = 0.0
-                if persona2 not in df_pivot_vs.columns:
-                    df_pivot_vs[persona2] = 0.0
-                    
-                # Calcoliamo chi ha speso di più e la differenza assoluta
-                df_pivot_vs["Differenza (€)"] = abs(df_pivot_vs[persona1] - df_pivot_vs[persona2])
-                
-                st.dataframe(df_pivot_vs.style.format("{:.2f} €"), use_container_width=True)
+                col_res1, col_res2, col_diff = st.columns(3)
+                col_res1.metric(f"Totale {persona1}", f"{tot_p1:.2f} €")
+                col_res2.metric(f"Totale {persona2}", f"{tot_p2:.2f} €")
+                col_diff.metric("Differenza", f"{abs(tot_p1 - tot_p2):.2f} €")
                 
             else:
-                st.info("Non ci sono spese da mostrare per queste due persone nelle categorie selezionate.")
+                st.info("Nessuna spesa registrata per queste due persone nelle categorie selezionate.")
             
     st.divider()
     st.subheader("🗑️ Elimina una spesa")
