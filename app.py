@@ -183,83 +183,147 @@ with tab_spese:
         st.info("Nessuna spesa registrata.")
 
     st.divider()
-    st.subheader("👤 Dettaglio Quote Personali")
-    st.write("Controlla la causale, la categoria e l'esatto importo che ti è stato addebitato per ogni spesa (Rimborsi esclusi).")
+    st.subheader("🏦 Estratto Conto Personale")
+    st.write("Verifica al centesimo i tuoi movimenti: gli anticipi, i consumi reali e i rimborsi. Il saldo finale qui corrisponde esattamente al calcolo dei bilanci.")
     
-    # 1. Creiamo il menu a tendina
-    persona_selezionata = st.selectbox("Seleziona un partecipante:", partecipanti, key="filtro_persona")
+    # 1. Selettore persona
+    persona_selezionata = st.selectbox("Seleziona il tuo nome:", partecipanti, key="estratto_persona")
     
     if not df.empty:
-        # --- NOVITÀ: Escludiamo i Rimborsi in partenza ---
-        if "Categoria" in df.columns:
-            # Creiamo un dataframe temporaneo senza i rimborsi
-            df_valido = df[~df["Categoria"].str.lower().str.contains("rimbors", na=False)].copy()
-        else:
-            df_valido = df.copy()
-
-        # 2. Troviamo tutte le righe dove la persona compare tra i partecipanti (sul dataframe filtrato)
-        mask_coinvolto = df_valido["Partecipanti"].astype(str).str.contains(persona_selezionata, na=False)
-        df_coinvolto = df_valido[mask_coinvolto].copy()
+        anticipi_personali = []
+        consumi_personali = []
+        rimborsi_in = []  # Soldi ricevuti (ero pagante del rimborso)
+        rimborsi_out = [] # Soldi inviati (ero partecipante del rimborso)
         
-        if not df_coinvolto.empty:
-            dettagli_personali = []
+        # 2. MOTORE DI CALCOLO UNICO
+        for index, riga in df.iterrows():
+            cat = riga.get("Categoria", "Altro")
+            is_rimborso = "rimbors" in str(cat).lower()
+            causale = riga["Causale"]
+            importo_totale = float(riga["Importo"])
             
-            # 3. Calcoliamo la quota esatta recuperando indice e categoria
-            for index, riga in df_coinvolto.iterrows():
-                causale = riga["Causale"]
-                categoria = riga.get("Categoria", "Altro")
-                importo_totale = float(riga["Importo"])
-                partecipanti_str = str(riga["Partecipanti"])
-                quota_finale = 0.0
-                
-                if ":" in partecipanti_str:
-                    # Caso A: Quote personalizzate
-                    voci = partecipanti_str.split(",")
-                    for voce in voci:
-                        if ":" in voce:
-                            nome_debitore, quota_str = voce.split(":")
-                            if nome_debitore.strip() == persona_selezionata:
-                                quota_finale = float(quota_str)
-                else:
-                    # Caso B: Divisione alla romana 
-                    lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
-                    num_debitori = len(lista_debitori)
+            # --- A. Calcolo di quanto ha ANTICIPATO (Pagante) ---
+            paganti_str = str(riga["Pagante"])
+            quota_anticipata = 0.0
+            
+            if ":" in paganti_str:
+                for voce in paganti_str.split(","):
+                    if ":" in voce:
+                        nome, q = voce.split(":")
+                        if nome.strip() == persona_selezionata:
+                            quota_anticipata = float(q)
+            else:
+                lista_paganti = [n.strip() for n in paganti_str.split(",") if n.strip()]
+                if persona_selezionata in lista_paganti:
+                    num_paganti = len(lista_paganti)
+                    imp_cents = int(round(importo_totale * 100))
+                    quota_base = imp_cents // num_paganti
+                    resto = imp_cents % num_paganti
+                    idx = lista_paganti.index(persona_selezionata)
+                    quota_anticipata = (quota_base + (1 if idx < resto else 0)) / 100.0
                     
-                    if num_debitori > 0 and persona_selezionata in lista_debitori:
-                        importo_cents = int(round(importo_totale * 100))
-                        quota_base_cents = importo_cents // num_debitori
-                        resto_cents = importo_cents % num_debitori
-                        
-                        indice_persona = lista_debitori.index(persona_selezionata)
-                        centesimi_extra = 1 if indice_persona < resto_cents else 0
-                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
-                
-                # Salviamo Riga, Causale, Categoria e Quota
-                if quota_finale > 0:
-                    dettagli_personali.append({
-                        "Riga N.": index,
-                        "Causale": causale, 
-                        "Categoria": categoria, 
-                        "Quota Attribuita (€)": quota_finale
-                    })
-            
-            # 4. Generiamo la tabella finale
-            if dettagli_personali:
-                df_dettaglio = pd.DataFrame(dettagli_personali)
-                
-                # Impostiamo il numero della riga come indice visivo della tabella
-                df_dettaglio.set_index("Riga N.", inplace=True)
-                
-                st.success(f"Trovate **{len(df_dettaglio)}** spese a carico di **{persona_selezionata}** (Rimborsi esclusi).")
-                
-                # Mostriamo la tabella formattando la colonna in Euro
-                st.dataframe(df_dettaglio.style.format({"Quota Attribuita (€)": "{:.2f} €"}), use_container_width=True)
-                
-                totale_quote = df_dettaglio["Quota Attribuita (€)"].sum()
-                st.info(f"💡 Il totale complessivo addebitato in queste spese è di {totale_quote:.2f} €")
-        else:
-            st.warning(f"{persona_selezionata} non ha quote a suo carico (Rimborsi esclusi).")
+            if quota_anticipata > 0:
+                if is_rimborso:
+                    # Se sono il pagante di un rimborso, significa che STO DANDO dei soldi a qualcuno
+                    rimborsi_out.append({"Riga N.": index, "A chi ho inviato": str(riga["Partecipanti"]), "Importo (€)": quota_anticipata})
+                else:
+                    anticipi_personali.append({"Riga N.": index, "Causale": causale, "Categoria": cat, "Importo (€)": quota_anticipata})
 
+            # --- B. Calcolo di quanto ha CONSUMATO (Partecipante) ---
+            partecipanti_str = str(riga["Partecipanti"])
+            quota_consumata = 0.0
+            
+            if ":" in partecipanti_str:
+                for voce in partecipanti_str.split(","):
+                    if ":" in voce:
+                        nome, q = voce.split(":")
+                        if nome.strip() == persona_selezionata:
+                            quota_consumata = float(q)
+            else:
+                lista_debitori = [n.strip() for n in partecipanti_str.split(",") if n.strip()]
+                if persona_selezionata in lista_debitori:
+                    num_debitori = len(lista_debitori)
+                    imp_cents = int(round(importo_totale * 100))
+                    quota_base = imp_cents // num_debitori
+                    resto = imp_cents % num_debitori
+                    idx = lista_debitori.index(persona_selezionata)
+                    quota_consumata = (quota_base + (1 if idx < resto else 0)) / 100.0
+                    
+            if quota_consumata > 0:
+                if is_rimborso:
+                    # Se sono il partecipante di un rimborso, significa che STO RICEVENDO soldi
+                    rimborsi_in.append({"Riga N.": index, "Da chi ho ricevuto": str(riga["Pagante"]), "Importo (€)": quota_consumata})
+                else:
+                    consumi_personali.append({"Riga N.": index, "Causale": causale, "Categoria": cat, "Importo (€)": quota_consumata})
+
+        # 3. TOTALI E METRICHE
+        tot_anticipato = sum(item["Importo (€)"] for item in anticipi_personali)
+        tot_consumato = sum(item["Importo (€)"] for item in consumi_personali)
+        tot_rimborsi_in = sum(item["Importo (€)"] for item in rimborsi_in)
+        tot_rimborsi_out = sum(item["Importo (€)"] for item in rimborsi_out)
+        
+        # Saldo Matematico: Anticipato (Credito) - Consumato (Debito) + Rimborsi in uscita (Credito verso il gruppo) - Rimborsi in entrata (Debito saldato)
+        saldo_finale = tot_anticipato - tot_consumato + tot_rimborsi_out - tot_rimborsi_in
+        
+        col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+        col_kpi1.metric("🛒 Spesa Effettiva", f"{tot_consumato:.2f} €", help="La tua quota di consumo reale.")
+        col_kpi2.metric("💳 Hai Anticipato", f"{tot_anticipato:.2f} €", help="Soldi messi di tasca tua per il gruppo.")
+        col_kpi3.metric("⚖️ Saldo Attuale", f"{saldo_finale:.2f} €", delta="In Credito" if saldo_finale > 0.01 else ("In Debito" if saldo_finale < -0.01 else "In Pari"), delta_color="normal" if saldo_finale >= 0 else "inverse")
+
+        st.write("") # Spazio
+
+        # 4. LE TRE SOTTO-SCHEDE (TABS)
+        tab_ant, tab_cons, tab_rimb = st.tabs(["💳 I tuoi Anticipi", "🛒 Le tue Quote (Consumi)", "🔄 Rimborsi"])
+        
+        with tab_ant:
+            if anticipi_personali:
+                df_ant = pd.DataFrame(anticipi_personali).set_index("Riga N.")
+                
+                # Filtro per categoria richiesto!
+                categorie_anticipi = df_ant["Categoria"].unique().tolist()
+                filtro_cat_ant = st.multiselect("Filtra anticipi per Categoria:", categorie_anticipi, default=categorie_anticipi, key="filtro_cat_ant")
+                
+                df_ant_filtrato = df_ant[df_ant["Categoria"].isin(filtro_cat_ant)]
+                
+                st.dataframe(df_ant_filtrato.style.format({"Importo (€)": "{:.2f} €"}), use_container_width=True)
+                if not df_ant_filtrato.empty:
+                    st.caption(f"Totale filtrato: **{df_ant_filtrato['Importo (€)'].sum():.2f} €**")
+            else:
+                st.info("Non hai ancora anticipato soldi per nessuna spesa.")
+                
+        with tab_cons:
+            if consumi_personali:
+                df_cons = pd.DataFrame(consumi_personali).set_index("Riga N.")
+                
+                # Stesso filtro opzionale anche qui per simmetria
+                categorie_consumi = df_cons["Categoria"].unique().tolist()
+                filtro_cat_cons = st.multiselect("Filtra quote per Categoria:", categorie_consumi, default=categorie_consumi, key="filtro_cat_cons")
+                
+                df_cons_filtrato = df_cons[df_cons["Categoria"].isin(filtro_cat_cons)]
+                
+                st.dataframe(df_cons_filtrato.style.format({"Importo (€)": "{:.2f} €"}), use_container_width=True)
+                if not df_cons_filtrato.empty:
+                    st.caption(f"Totale filtrato: **{df_cons_filtrato['Importo (€)'].sum():.2f} €**")
+            else:
+                st.info("Non hai ancora quote di spesa a tuo carico.")
+                
+        with tab_rimb:
+            col_rin, col_rout = st.columns(2)
+            with col_rin:
+                st.write("**📥 Rimborsi Ricevuti**")
+                if rimborsi_in:
+                    df_rin = pd.DataFrame(rimborsi_in).set_index("Riga N.")
+                    st.dataframe(df_rin.style.format({"Importo (€)": "{:.2f} €"}), use_container_width=True)
+                else:
+                    st.caption("Nessun rimborso ricevuto.")
+            with col_rout:
+                st.write("**📤 Rimborsi Inviati**")
+                if rimborsi_out:
+                    df_rout = pd.DataFrame(rimborsi_out).set_index("Riga N.")
+                    st.dataframe(df_rout.style.format({"Importo (€)": "{:.2f} €"}), use_container_width=True)
+                else:
+                    st.caption("Nessun rimborso inviato.")
+    
     st.divider()
     st.subheader("⚖️ Confronto Puntuale Spese")
     st.write("Verifica riga per riga gli importi addebitati a due persone per le categorie selezionate (Rimborsi esclusi).")
