@@ -117,14 +117,14 @@ with tab_spese:
                         quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
 
         if st.button("Inserisci Spesa", type="primary"):
-            if causale and importo > 0 and len(diviso_tra) > 0:
+            if causale and nuovo_importo > 0 and len(diviso_tra) > 0:
                 
                 # Controllo validità quote personalizzate
                 if not divisione_uguale:
                     somma_quote = sum(quote_personalizzate.values())
                     # Usiamo una tolleranza minima per evitare problemi di arrotondamento di Python
-                    if abs(somma_quote - importo) > 0.01:
-                        st.error(f"⚠️ Attenzione! La somma delle quote ({somma_quote}€) non coincide con il totale ({importo}€).")
+                    if abs(somma_quote - nuovo_importo) > 0.01:
+                        st.error(f"⚠️ Attenzione! La somma delle quote ({somma_quote}€) non coincide con il totale ({nuovo_importo}€).")
                         st.stop()
                     
                     # Salviamo le quote nel formato "Nome:10.5, Nome2:5.0"
@@ -136,7 +136,7 @@ with tab_spese:
                 nuova_spesa = pd.DataFrame([{
                     "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Pagante": pagante,
-                    "Importo": importo,
+                    "Importo": nuovo_importo,
                     "Causale": causale,
                     "Partecipanti": stringa_partecipanti,
                     "Categoria": categoria
