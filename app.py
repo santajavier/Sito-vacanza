@@ -3,6 +3,7 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import plotly.express as px
+from fpdf import FPDF
 
 # 1. Apriamo la cassaforte e leggiamo i dati
 config = st.secrets["config"]
@@ -271,6 +272,69 @@ with tab_spese:
         col_kpi3.metric("⚖️ Saldo Attuale", f"{saldo_finale:.2f} €", delta="In Credito" if saldo_finale > 0.01 else ("In Debito" if saldo_finale < -0.01 else "In Pari"), delta_color="normal" if saldo_finale >= 0 else "inverse")
 
         st.write("") # Spazio
+        
+        # --- GENERATORE PDF ---
+        def genera_pdf_estratto():
+            pdf = FPDF()
+            pdf.add_page()
+            # Intestazione
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(0, 10, f"Estratto Conto: {persona_selezionata}", ln=True, align='C')
+            pdf.ln(5)
+            
+            # Riepilogo Metriche (Usiamo EUR invece di € per evitare errori di codifica del font standard)
+            pdf.set_font("Arial", '', 12)
+            pdf.cell(0, 8, f"Spesa Effettiva (Consumi): {tot_consumato:.2f} EUR", ln=True)
+            pdf.cell(0, 8, f"Totale Anticipato: {tot_anticipato:.2f} EUR", ln=True)
+            pdf.cell(0, 8, f"Rimborsi Ricevuti: {tot_rimborsi_in:.2f} EUR | Rimborsi Inviati: {tot_rimborsi_out:.2f} EUR", ln=True)
+            
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(0, 10, f"SALDO ATTUALE: {saldo_finale:.2f} EUR", ln=True)
+            pdf.ln(8)
+
+            # Funzione interna per stampare le singole tabelle
+            def stampa_sezione_pdf(titolo, lista, chiavi_extra):
+                pdf.set_font("Arial", 'B', 12)
+                pdf.cell(0, 8, titolo, ln=True)
+                pdf.set_font("Arial", '', 10)
+                if not lista:
+                    pdf.cell(0, 6, "Nessun movimento registrato.", ln=True)
+                else:
+                    for item in lista:
+                        valori = []
+                        for k in chiavi_extra:
+                            val = str(item.get(k, ""))
+                            # Formattiamo l'importo
+                            if k == "Importo (€)":
+                                val = f"{float(val):.2f} EUR"
+                            valori.append(val)
+                        
+                        riga = f"Riga {item['Riga N.']} | " + " | ".join(valori)
+                        # Codifica sicura per evitare crash se ci sono accenti particolari nella causale
+                        riga_sicura = riga.encode('latin-1', 'ignore').decode('latin-1')
+                        pdf.cell(0, 6, riga_sicura, ln=True)
+                pdf.ln(5)
+
+            # Stampa le varie sezioni
+            stampa_sezione_pdf("I TUOI ANTICIPI", anticipi_personali, ["Causale", "Categoria", "Importo (€)"])
+            stampa_sezione_pdf("LE TUE QUOTE (CONSUMI)", consumi_personali, ["Causale", "Categoria", "Importo (€)"])
+            stampa_sezione_pdf("RIMBORSI RICEVUTI", rimborsi_in, ["Da chi ho ricevuto", "Importo (€)"])
+            stampa_sezione_pdf("RIMBORSI INVIATI", rimborsi_out, ["A chi ho inviato", "Importo (€)"])
+            
+            return pdf.output(dest="S").encode("latin-1")
+
+        # Mostriamo il bottone di download centrato
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+        with col_btn2:
+            st.download_button(
+                label=f"📄 Scarica Estratto Conto (PDF)",
+                data=genera_pdf_estratto(),
+                file_name=f"Estratto_Conto_{persona_selezionata}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            
+        st.write("") # Spazio finale prima delle schede
 
         # 4. LE TRE SOTTO-SCHEDE (TABS)
         tab_ant, tab_cons, tab_rimb = st.tabs(["💳 I tuoi Anticipi", "🛒 Le tue Quote (Consumi)", "🔄 Rimborsi"])
