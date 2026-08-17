@@ -48,18 +48,42 @@ except Exception as e:
 tab_spese, tab_bilanci, tab_statistiche = st.tabs(["💸 Spese", "⚖️ Bilanci", "📊 Statistiche"])
 
 with tab_spese:
-    st.header("Aggiungi una nuova spesa")
+
+    st.header("➕ Aggiungi Nuova Spesa")
     
-    # Usiamo un container normale invece del form, per avere l'aggiornamento in tempo reale dei campi
-    st.subheader("Nuova Spesa")
+    # Usiamo un container normale invece del form per avere l'aggiornamento in tempo reale
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        pagante = st.selectbox("Chi ha pagato?", partecipanti)
-        importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, format="%.2f")
-    with col2:
-        causale = st.text_input("Causale (es. Benzina, Cena)")
+        st.write("💳 **Chi ha anticipato i soldi?**")
+        paganti_selezionati = st.multiselect("Seleziona chi ha pagato", partecipanti, default=[partecipanti[0]], key="new_paganti")
+        tipo_div_pag = st.radio("Come hanno diviso l'anticipo?", ["In parti uguali", "Quote personalizzate"], key="new_tipo_div_pag")
         
+        nuovo_importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, value=0.0, key="new_imp")
+        
+        stringa_paganti = ""
+        if tipo_div_pag == "In parti uguali":
+            stringa_paganti = ", ".join(paganti_selezionati)
+        else:
+            st.caption("Inserisci la quota esatta anticipata da ciascuno:")
+            quote_pag = {}
+            # Usiamo colonne interne per affiancare gli input numerici
+            cols_pag = st.columns(3)
+            for i, p in enumerate(paganti_selezionati):
+                with cols_pag[i % 3]:
+                    quote_pag[p] = st.number_input(f"{p} (€)", min_value=0.0, step=0.5, value=0.0, key=f"new_qpag_{p}")
+            
+            stringa_paganti = ", ".join([f"{p}:{quote_pag[p]}" for p in paganti_selezionati])
+            
+            somma_pagata = sum(quote_pag.values())
+            if abs(somma_pagata - nuovo_importo) > 0.01:
+                st.warning(f"⚠️ Attenzione: la somma degli anticipi ({somma_pagata:.2f} €) non coincide con l'importo ({nuovo_importo:.2f} €).")
+
+    with col2:
+        st.write("🛒 **Dettagli Spesa**")
+        # Qui sotto metterai i campi per Causale, Categoria e chi partecipa alla spesa (i debitori)
+        causale = st.text_input("Causale (es. Benzina, Cena)")
+            
         # --- NUOVA LOGICA CATEGORIE ---
         # Leggiamo le categorie già usate dal foglio (se esistono) ignorando le celle vuote
         categorie_esistenti = list(df["Categoria"].dropna().unique()) if "Categoria" in df.columns else []
@@ -73,55 +97,55 @@ with tab_spese:
         
         diviso_tra = st.multiselect("Coinvolti nella spesa", partecipanti, default=partecipanti)
 
-    divisione_uguale = st.checkbox("Dividi in parti uguali", value=True)
-    
-    quote_personalizzate = {}
-    if not divisione_uguale and len(diviso_tra) > 0:
-        st.write("Inserisci la quota esatta per ogni persona:")
-        col_q1, col_q2 = st.columns(2)
-        for i, persona in enumerate(diviso_tra):
-            # Alterniamo le colonne per estetica
-            if i % 2 == 0:
-                with col_q1:
-                    quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
-            else:
-                with col_q2:
-                    quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
+        divisione_uguale = st.checkbox("Dividi in parti uguali", value=True)
+        
+        quote_personalizzate = {}
+        if not divisione_uguale and len(diviso_tra) > 0:
+            st.write("Inserisci la quota esatta per ogni persona:")
+            col_q1, col_q2 = st.columns(2)
+            for i, persona in enumerate(diviso_tra):
+                # Alterniamo le colonne per estetica
+                if i % 2 == 0:
+                    with col_q1:
+                        quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
+                else:
+                    with col_q2:
+                        quote_personalizzate[persona] = st.number_input(f"Quota {persona} (€)", min_value=0.0, step=0.5, format="%.2f")
 
-    if st.button("Inserisci Spesa", type="primary"):
-        if causale and importo > 0 and len(diviso_tra) > 0:
-            
-            # Controllo validità quote personalizzate
-            if not divisione_uguale:
-                somma_quote = sum(quote_personalizzate.values())
-                # Usiamo una tolleranza minima per evitare problemi di arrotondamento di Python
-                if abs(somma_quote - importo) > 0.01:
-                    st.error(f"⚠️ Attenzione! La somma delle quote ({somma_quote}€) non coincide con il totale ({importo}€).")
-                    st.stop()
+        if st.button("Inserisci Spesa", type="primary"):
+            if causale and importo > 0 and len(diviso_tra) > 0:
                 
-                # Salviamo le quote nel formato "Nome:10.5, Nome2:5.0"
-                stringa_partecipanti = ", ".join([f"{p}:{q}" for p, q in quote_personalizzate.items()])
-            else:
-                # Formato standard per la divisione alla romana
-                stringa_partecipanti = ", ".join(diviso_tra)
+                # Controllo validità quote personalizzate
+                if not divisione_uguale:
+                    somma_quote = sum(quote_personalizzate.values())
+                    # Usiamo una tolleranza minima per evitare problemi di arrotondamento di Python
+                    if abs(somma_quote - importo) > 0.01:
+                        st.error(f"⚠️ Attenzione! La somma delle quote ({somma_quote}€) non coincide con il totale ({importo}€).")
+                        st.stop()
+                    
+                    # Salviamo le quote nel formato "Nome:10.5, Nome2:5.0"
+                    stringa_partecipanti = ", ".join([f"{p}:{q}" for p, q in quote_personalizzate.items()])
+                else:
+                    # Formato standard per la divisione alla romana
+                    stringa_partecipanti = ", ".join(diviso_tra)
 
-            nuova_spesa = pd.DataFrame([{
-                "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Pagante": pagante,
-                "Importo": importo,
-                "Causale": causale,
-                "Partecipanti": stringa_partecipanti,
-                "Categoria": categoria
-            }])
-            
-            df_aggiornato = nuova_spesa if df.empty else pd.concat([df, nuova_spesa], ignore_index=True)
-            conn.update(spreadsheet=url_foglio, data=df_aggiornato)
-            
-            st.success("✅ Spesa registrata!")
-            st.cache_data.clear()
-            st.rerun()
-        else:
-            st.error("⚠️ Compila tutti i campi richiesti.")
+                nuova_spesa = pd.DataFrame([{
+                    "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Pagante": pagante,
+                    "Importo": importo,
+                    "Causale": causale,
+                    "Partecipanti": stringa_partecipanti,
+                    "Categoria": categoria
+                }])
+                
+                df_aggiornato = nuova_spesa if df.empty else pd.concat([df, nuova_spesa], ignore_index=True)
+                conn.update(spreadsheet=url_foglio, data=df_aggiornato)
+                
+                st.success("✅ Spesa registrata!")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("⚠️ Compila tutti i campi richiesti.")
 
     st.divider()
     st.header("💸 Riepilogo Spese")
@@ -234,8 +258,8 @@ with tab_spese:
             st.warning(f"{persona_selezionata} non ha quote a suo carico (Rimborsi esclusi).")
 
     st.divider()
-    st.subheader("⚖️ Confronto Spese tra Partecipanti")
-    st.write("Scegli due persone e filtra le categorie per confrontare l'esatto importo addebitato a ciascuno (Rimborsi esclusi).")
+    st.subheader("⚖️ Confronto Puntuale Spese")
+    st.write("Verifica riga per riga gli importi addebitati a due persone per le categorie selezionate (Rimborsi esclusi).")
 
     if not df.empty:
         # --- FILTRO RIMBORSI E LETTURA CATEGORIE ---
@@ -249,16 +273,15 @@ with tab_spese:
         # --- MENU DI SELEZIONE ---
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            persona1 = st.selectbox("Prima persona", partecipanti, index=0, key="vs_p1")
+            persona1 = st.selectbox("Prima persona", partecipanti, index=0, key="vs_p1_puntuale")
         with col_c2:
-            # Impostiamo l'indice a 1 di default per non selezionare la stessa persona due volte
-            persona2 = st.selectbox("Seconda persona", partecipanti, index=1 if len(partecipanti) > 1 else 0, key="vs_p2")
+            persona2 = st.selectbox("Seconda persona", partecipanti, index=1 if len(partecipanti) > 1 else 0, key="vs_p2_puntuale")
             
         categorie_selezionate = st.multiselect(
             "Seleziona le categorie da confrontare:", 
             categorie_disponibili, 
             default=categorie_disponibili, 
-            key="vs_cat"
+            key="vs_cat_puntuale"
         )
         
         # --- CONTROLLI DI SICUREZZA ---
@@ -267,20 +290,20 @@ with tab_spese:
         elif not categorie_selezionate:
             st.warning("⚠️ Seleziona almeno una categoria dal menu.")
         else:
-            # --- CALCOLO DELLE QUOTE (Logica Centesimo Fantasma) ---
-            dati_confronto = []
+            dettagli_confronto = []
             
+            # --- CALCOLO QUOTE RIGA PER RIGA ---
             for index, riga in df_confronto.iterrows():
                 cat = riga.get("Categoria", "Altro")
                 
-                # Saltiamo la riga se la categoria non è tra quelle selezionate
+                # Filtro per categoria
                 if cat not in categorie_selezionate:
                     continue
                     
+                causale = riga["Causale"]
                 importo_totale = float(riga["Importo"])
                 partecipanti_str = str(riga["Partecipanti"])
                 
-                # Inizializziamo a zero per questa specifica riga
                 quote_riga = {persona1: 0.0, persona2: 0.0}
                 
                 if ":" in partecipanti_str:
@@ -293,7 +316,7 @@ with tab_spese:
                             if nome_debitore in quote_riga:
                                 quote_riga[nome_debitore] = float(quota_str)
                 else:
-                    # Divisione alla romana
+                    # Divisione alla romana (con centesimo fantasma)
                     lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
                     num_debitori = len(lista_debitori)
                     
@@ -308,58 +331,45 @@ with tab_spese:
                                 centesimi_extra = 1 if indice_persona < resto_cents else 0
                                 quote_riga[p] = (quota_base_cents + centesimi_extra) / 100.0
                 
-                # Salviamo i dati finali
-                for p in [persona1, persona2]:
-                    if quote_riga[p] > 0:
-                        dati_confronto.append({"Persona": p, "Categoria": cat, "Importo": quote_riga[p]})
+                # Inseriamo la riga nella tabella SOLO se almeno uno dei due è coinvolto nella spesa
+                if quote_riga[persona1] > 0 or quote_riga[persona2] > 0:
+                    dettagli_confronto.append({
+                        "Riga N.": index,
+                        "Causale": causale,
+                        "Categoria": cat,
+                        "Scontrino (€)": importo_totale,
+                        f"Quota {persona1} (€)": quote_riga[persona1],
+                        f"Quota {persona2} (€)": quote_riga[persona2]
+                    })
             
-            # --- CREAZIONE GRAFICO E TABELLA ---
-            if dati_confronto:
-                df_vs = pd.DataFrame(dati_confronto)
-                # Sommiamo gli importi per categoria e per persona
-                df_vs_grouped = df_vs.groupby(["Persona", "Categoria"])["Importo"].sum().reset_index()
-                df_vs_grouped["Importo"] = df_vs_grouped["Importo"].round(2)
+            # --- MOSTRA I RISULTATI ---
+            if dettagli_confronto:
+                df_vs_puntuale = pd.DataFrame(dettagli_confronto)
+                # Impostiamo la riga originale come indice per poter andare a ricontrollare facilmente
+                df_vs_puntuale.set_index("Riga N.", inplace=True)
                 
-                # 1. Grafico Plotly (barmode="group" per affiancare le colonne)
-                fig_vs = px.bar(
-                    df_vs_grouped,
-                    x="Categoria",
-                    y="Importo",
-                    color="Persona",
-                    barmode="group",
-                    text="Importo"
-                )
+                st.success(f"🧾 Trovate **{len(df_vs_puntuale)}** spese che coinvolgono {persona1} o {persona2}.")
                 
-                fig_vs.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    yaxis_title="Euro (€)",
-                    xaxis_title="",
-                    legend_title_text="Partecipante"
-                )
-                # Testo fuori dalla colonna per maggiore leggibilità
-                fig_vs.update_traces(textposition='outside', texttemplate='%{text:.2f} €')
+                # Formattiamo tutte le colonne numeriche in Euro
+                format_dict = {
+                    "Scontrino (€)": "{:.2f} €",
+                    f"Quota {persona1} (€)": "{:.2f} €",
+                    f"Quota {persona2} (€)": "{:.2f} €"
+                }
                 
-                st.plotly_chart(fig_vs, use_container_width=True)
+                st.dataframe(df_vs_puntuale.style.format(format_dict), use_container_width=True)
                 
-                # 2. Tabella Pivot Riassuntiva
-                st.write("📊 **Dettaglio Differenze**")
-                # Creiamo la tabella con le categorie sulle righe e le persone sulle colonne
-                df_pivot_vs = df_vs_grouped.pivot(index="Categoria", columns="Persona", values="Importo").fillna(0)
+                # Aggiungiamo un riepilogo rapido sotto la tabella
+                tot_p1 = df_vs_puntuale[f"Quota {persona1} (€)"].sum()
+                tot_p2 = df_vs_puntuale[f"Quota {persona2} (€)"].sum()
                 
-                # Assicuriamoci che entrambe le colonne esistano (nel caso uno dei due non abbia speso nulla)
-                if persona1 not in df_pivot_vs.columns:
-                    df_pivot_vs[persona1] = 0.0
-                if persona2 not in df_pivot_vs.columns:
-                    df_pivot_vs[persona2] = 0.0
-                    
-                # Calcoliamo chi ha speso di più e la differenza assoluta
-                df_pivot_vs["Differenza (€)"] = abs(df_pivot_vs[persona1] - df_pivot_vs[persona2])
-                
-                st.dataframe(df_pivot_vs.style.format("{:.2f} €"), use_container_width=True)
+                col_res1, col_res2, col_diff = st.columns(3)
+                col_res1.metric(f"Totale {persona1}", f"{tot_p1:.2f} €")
+                col_res2.metric(f"Totale {persona2}", f"{tot_p2:.2f} €")
+                col_diff.metric("Differenza", f"{abs(tot_p1 - tot_p2):.2f} €")
                 
             else:
-                st.info("Non ci sono spese da mostrare per queste due persone nelle categorie selezionate.")
+                st.info("Nessuna spesa registrata per queste due persone nelle categorie selezionate.")
             
     st.divider()
     st.subheader("🗑️ Elimina una spesa")
@@ -429,16 +439,56 @@ with tab_spese:
             
             default_partecipanti = [p for p in partecipanti_esistenti if p in partecipanti]
             
-            # --- INTERFACCIA DATI BASE ---
+            # --- LOGICA DI LETTURA PAGANTI ATTUALI ---
+            paganti_str = str(riga_attuale["Pagante"])
+            is_custom_pag = ":" in paganti_str
+            
+            quote_esistenti_pag = {}
+            if is_custom_pag:
+                for item in paganti_str.split(","):
+                    if ":" in item:
+                        nome, quota = item.split(":")
+                        quote_esistenti_pag[nome.strip()] = float(quota)
+                paganti_esistenti_pag = list(quote_esistenti_pag.keys())
+            else:
+                paganti_esistenti_pag = [nome.strip() for nome in paganti_str.split(",") if nome.strip()]
+            
+            default_paganti = [p for p in paganti_esistenti_pag if p in partecipanti]
+            if not default_paganti: # Fallback di sicurezza
+                default_paganti = [partecipanti[0]]
+
+            # --- INTERFACCIA PAGANTI MULTIPLI ---
+            st.write("💳 **Chi ha anticipato i soldi?**")
+            tipo_div_pag_mod = st.radio("Come hanno diviso l'anticipo?", ["In parti uguali", "Quote personalizzate"], index=1 if is_custom_pag else 0, key=f"mod_tipo_div_pag_{indice_mod}")
+            
+            nuovi_paganti = st.multiselect("Pagante/i", partecipanti, default=default_paganti, key=f"mod_paganti_{indice_mod}")
+            nuovo_importo = st.number_input("Importo Totale (€)", min_value=0.0, step=0.5, value=float(riga_attuale["Importo"]), key=f"mod_imp_{indice_mod}")
+            
+            nuova_stringa_paganti = ""
+            if tipo_div_pag_mod == "In parti uguali":
+                nuova_stringa_paganti = ", ".join(nuovi_paganti)
+            else:
+                st.caption("Inserisci la quota esatta anticipata da ciascuno:")
+                quote_pag_mod = {}
+                cols_pag_mod = st.columns(3)
+                for i, p in enumerate(nuovi_paganti):
+                    valore_default_pag = quote_esistenti_pag.get(p, 0.0)
+                    with cols_pag_mod[i % 3]:
+                        quote_pag_mod[p] = st.number_input(f"{p} ha pagato (€)", min_value=0.0, step=0.5, value=float(valore_default_pag), key=f"mod_qpag_{p}_{indice_mod}")
+                
+                nuova_stringa_paganti = ", ".join([f"{p}:{quote_pag_mod[p]}" for p in nuovi_paganti])
+                
+                somma_pagata_mod = sum(quote_pag_mod.values())
+                if abs(somma_pagata_mod - nuovo_importo) > 0.01:
+                    st.warning(f"⚠️ Attenzione: la somma degli anticipi ({somma_pagata_mod:.2f} €) non coincide con l'importo totale ({nuovo_importo:.2f} €).")
+
+            # --- DATI AGGIUNTIVI SPESA ---
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                idx_pagante = partecipanti.index(riga_attuale["Pagante"]) if riga_attuale["Pagante"] in partecipanti else 0
-                nuovo_pagante = st.selectbox("Pagante", partecipanti, index=idx_pagante, key=f"mod_pag_{indice_mod}")
-                nuovo_importo = st.number_input("Importo (€)", min_value=0.0, step=0.5, value=float(riga_attuale["Importo"]), key=f"mod_imp_{indice_mod}")
-            with col_m2:
                 nuova_causale = st.text_input("Causale", value=str(riga_attuale["Causale"]), key=f"mod_caus_{indice_mod}")
+            with col_m2:
                 nuova_categoria = st.text_input("Categoria", value=str(riga_attuale.get("Categoria", "")), key=f"mod_cat_{indice_mod}")
-            
+
             # --- INTERFACCIA GESTIONE AVANZATA PARTECIPANTI ---
             st.write("👥 **Gestione Partecipanti e Quote**")
             tipo_div = st.radio("Come dividere la spesa?", ["In parti uguali", "Quote personalizzate"], index=1 if is_custom else 0, key=f"mod_tipo_div_{indice_mod}")
@@ -476,7 +526,7 @@ with tab_spese:
                 if st.button("Salva Modifiche", key=f"btn_salva_mod_{indice_mod}"):
                     if pwd_mod == master_password:
                         # Riscriviamo i dati aggiornati
-                        df.at[indice_mod, "Pagante"] = nuovo_pagante
+                        df.at[indice_mod, "Pagante"] = nuova_stringa_paganti
                         df.at[indice_mod, "Importo"] = nuovo_importo
                         df.at[indice_mod, "Causale"] = nuova_causale
                         if "Categoria" in df.columns:
@@ -494,113 +544,167 @@ with tab_spese:
                         st.error("❌ Master Password errata!")
     
 with tab_bilanci:
-    st.header("⚖️ Situazione Saldi e Rimborsi")
-
+    st.header("⚖️ Bilancio Finale: Chi deve a chi")
+    
     if not df.empty:
-        # 1. Inizializziamo i saldi a zero
-        saldi = {persona: 0.0 for persona in partecipanti}
-
+        # 1. Inizializziamo il "conto in banca" di tutti a zero
+        bilanci = {p: 0.0 for p in partecipanti}
+        
+        # 2. CALCOLO DEI SALDI PERSONALI (Crediti - Debiti)
         for index, riga in df.iterrows():
-            pagante = riga["Pagante"]
-            importo = float(riga["Importo"])
-            partecipanti_str = str(riga["Partecipanti"])
+            importo_totale = float(riga["Importo"])
             
-            # Il pagante va in positivo dell'intero importo sborsato
-            if pagante in saldi:
-                saldi[pagante] += importo
-            
-            # Controlliamo se è una spesa con quote personalizzate (c'è il ':')
-            if ":" in partecipanti_str:
-                # Es: "Michele:15.5, Luisa:10.0"
-                voci = partecipanti_str.split(",")
-                for voce in voci:
+            # --- A. GESTIONE CREDITI (Chi ha messo i soldi = +) ---
+            paganti_str = str(riga["Pagante"])
+            if ":" in paganti_str:
+                # Pagamento con quote personalizzate
+                for voce in paganti_str.split(","):
                     if ":" in voce:
-                        nome_debitore, quota_str = voce.split(":")
-                        nome_debitore = nome_debitore.strip()
-                        quota = float(quota_str)
-                        if nome_debitore in saldi:
-                            saldi[nome_debitore] -= quota
+                        nome, quota = voce.split(":")
+                        nome_pulito = nome.strip()
+                        if nome_pulito in bilanci:
+                            bilanci[nome_pulito] += float(quota)
             else:
-                # Es: "Michele, Luisa" (Divisione alla romana corretta al centesimo)
-                lista_debitori = [nome.strip() for nome in partecipanti_str.split(",") if nome.strip() != ""]
+                # Pagamento in parti uguali tra chi ha anticipato
+                lista_paganti = [n.strip() for n in paganti_str.split(",") if n.strip()]
+                num_paganti = len(lista_paganti)
+                
+                if num_paganti > 0:
+                    imp_cents = int(round(importo_totale * 100))
+                    quota_base_cents = imp_cents // num_paganti
+                    resto_cents = imp_cents % num_paganti
+                    
+                    for i, p in enumerate(lista_paganti):
+                        centesimi_extra = 1 if i < resto_cents else 0
+                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
+                        if p in bilanci:
+                            bilanci[p] += quota_finale
+                            
+            # --- B. GESTIONE DEBITI (Chi ha usufruito della spesa = -) ---
+            partecipanti_str = str(riga["Partecipanti"])
+            if ":" in partecipanti_str:
+                # Consumo con quote personalizzate
+                for voce in partecipanti_str.split(","):
+                    if ":" in voce:
+                        nome, quota = voce.split(":")
+                        nome_pulito = nome.strip()
+                        if nome_pulito in bilanci:
+                            bilanci[nome_pulito] -= float(quota)
+            else:
+                # Consumo in parti uguali (alla romana)
+                lista_debitori = [n.strip() for n in partecipanti_str.split(",") if n.strip()]
                 num_debitori = len(lista_debitori)
                 
                 if num_debitori > 0:
-                    # Trasformiamo l'importo in centesimi interi (es. 3.50 -> 350)
-                    importo_cents = int(round(importo * 100))
+                    imp_cents = int(round(importo_totale * 100))
+                    quota_base_cents = imp_cents // num_debitori
+                    resto_cents = imp_cents % num_debitori
                     
-                    # Calcoliamo la quota base e il resto
-                    quota_base_cents = importo_cents // num_debitori # Divisione senza virgola (es. 43)
-                    resto_cents = importo_cents % num_debitori       # Il resto (es. 6 centesimi)
-                    
-                    for i, debitore in enumerate(lista_debitori):
-                        # Diamo 1 centesimo extra ai primi della lista per smaltire il resto
+                    for i, p in enumerate(lista_debitori):
                         centesimi_extra = 1 if i < resto_cents else 0
                         quota_finale = (quota_base_cents + centesimi_extra) / 100.0
-                        
-                        if debitore in saldi:
-                            saldi[debitore] -= quota_finale
+                        if p in bilanci:
+                            bilanci[p] -= quota_finale
+                            
+        # Arrotondiamo tutto a 2 decimali per evitare errori di virgola mobile
+        for p in bilanci:
+            bilanci[p] = round(bilanci[p], 2)
 
-        # Mostriamo il resoconto netto
-        st.subheader("1. Bilancio Netto")
-        for persona, saldo in saldi.items():
-            saldo_arrotondato = round(saldo, 2)
-            if saldo_arrotondato > 0.01:
-                st.success(f"🟩 **{persona}** è in credito di {saldo_arrotondato}€")
-            elif saldo_arrotondato < -0.01:
-                st.error(f"🟥 **{persona}** è in debito di {abs(saldo_arrotondato)}€")
+        # 3. MOSTRA I SALDI ATTUALI IN UN GRAFICO
+        st.subheader("📊 Situazione Attuale")
+        df_bilanci = pd.DataFrame(list(bilanci.items()), columns=["Partecipante", "Saldo"])
+        
+        # --- ORDINA DAL PIÙ IN CREDITO AL PIÙ IN DEBITO ---
+        df_bilanci = df_bilanci.sort_values(by="Saldo", ascending=False).reset_index(drop=True)
+        
+        # Grafico a barre
+        df_bilanci["Colore"] = df_bilanci["Saldo"].apply(lambda x: "Credito" if x > 0 else ("Debito" if x < 0 else "Pari"))
+        fig_saldi = px.bar(
+            df_bilanci, 
+            x="Partecipante", 
+            y="Saldo", 
+            color="Colore",
+            color_discrete_map={"Credito": "#2ecc71", "Debito": "#e74c3c", "Pari": "#95a5a6"},
+            text="Saldo"
+        )
+        fig_saldi.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis_title="Euro (€)", showlegend=False)
+        
+        # --- AUMENTA LA DIMENSIONE DEL FONT DEI NUMERI (textfont_size=16) ---
+        fig_saldi.update_traces(texttemplate='%{text:.2f} €', textposition='outside', textfont_size=16)
+        
+        st.plotly_chart(fig_saldi, use_container_width=True)
+
+        # --- NUOVA TABELLA CON COLORI DINAMICI (ORA ORDINATA) ---
+        st.write("📋 **Dettaglio Saldi**")
+        
+        def colora_saldo(valore):
+            """Applica il testo verde se positivo, rosso se negativo"""
+            if valore > 0.01:
+                colore = '#2ecc71' # Verde
+            elif valore < -0.01:
+                colore = '#e74c3c' # Rosso
+            else:
+                colore = '#ffffff' # Bianco/Neutro
+            return f'color: {colore}; font-weight: bold;'
+            
+        # Mostriamo la tabella applicando lo stile solo alla colonna 'Saldo'
+        st.dataframe(
+            df_bilanci[["Partecipante", "Saldo"]].style
+            .map(colora_saldo, subset=["Saldo"])
+            .format({"Saldo": "{:.2f} €"}),
+            use_container_width=True
+        )
 
         st.divider()
 
-        # 2. Algoritmo "Semplifica Debiti"
-        st.subheader("2. Semplifica Debiti (Chi paga chi)")
+        # 4. ALGORITMO DI RISOLUZIONE DEI DEBITI (Chi paga chi)
+        st.subheader("💸 Come pareggiare i conti")
         
-        # Separiamo chi deve ricevere (creditori) da chi deve dare (debitori)
-        creditori = []
-        debitori = []
-        for persona, saldo in saldi.items():
-            if saldo > 0.01:
-                creditori.append([persona, saldo])
-            elif saldo < -0.01:
-                debitori.append([persona, abs(saldo)])
-                
-        # Ordiniamo per facilitare gli incroci (dal debito/credito più alto al più basso)
-        creditori.sort(key=lambda x: x[1], reverse=True)
-        debitori.sort(key=lambda x: x[1], reverse=True)
+        debitori = [{"nome": k, "importo": -v} for k, v in bilanci.items() if v < -0.01]
+        creditori = [{"nome": k, "importo": v} for k, v in bilanci.items() if v > 0.01]
+        
+        debitori = sorted(debitori, key=lambda x: x["importo"], reverse=True)
+        creditori = sorted(creditori, key=lambda x: x["importo"], reverse=True)
         
         transazioni = []
-        i = 0 # Indice creditori
-        j = 0 # Indice debitori
+        i, j = 0, 0
         
-        while i < len(creditori) and j < len(debitori):
-            cred_nome, cred_importo = creditori[i]
-            deb_nome, deb_importo = debitori[j]
+        while i < len(debitori) and j < len(creditori):
+            deb = debitori[i]
+            cred = creditori[j]
             
-            # L'importo da scambiare è il minimo tra il debito e il credito
-            importo_scambiato = min(cred_importo, deb_importo)
-            importo_scambiato = round(importo_scambiato, 2)
+            importo_transazione = min(deb["importo"], cred["importo"])
             
-            transazioni.append((deb_nome, cred_nome, importo_scambiato))
+            transazioni.append({
+                "Da": deb["nome"],
+                "A": cred["nome"],
+                "Importo": round(importo_transazione, 2)
+            })
             
-            # Aggiorniamo i saldi residui dopo questa transazione virtuale
-            creditori[i][1] -= importo_scambiato
-            debitori[j][1] -= importo_scambiato
+            deb["importo"] -= importo_transazione
+            cred["importo"] -= importo_transazione
             
-            # Se il creditore o il debitore ha azzerato il suo conto, passiamo al prossimo
-            if creditori[i][1] < 0.01:
+            if deb["importo"] < 0.01:
                 i += 1
-            if debitori[j][1] < 0.01:
+            if cred["importo"] < 0.01:
                 j += 1
-
-        # Mostriamo i risultati
-        if len(transazioni) > 0:
-            for da, a, cifra in transazioni:
-                st.warning(f"💸 **{da}** deve dare **{cifra}€** a **{a}**")
+                
+        # --- BOX GIALLI PERSONALIZZATI PER LE TRANSAZIONI ---
+        if transazioni:
+            for t in transazioni:
+                testo_transazione = f"{t['Da']} deve dare {t['Importo']:.2f} € a {t['A']}"
+                
+                # Creiamo un div HTML con sfondo giallo chiaro e testo giallo scuro/arancio
+                box_giallo = f"""
+                <div style="background-color: #fff9c4; color: #b7950b; padding: 12px; 
+                            border-radius: 8px; margin-bottom: 8px; font-weight: bold; 
+                            border: 1px solid #f1c40f; text-align: center; font-size: 16px;">
+                    🔄 {testo_transazione}
+                </div>
+                """
+                st.markdown(box_giallo, unsafe_allow_html=True)
         else:
-            st.info("🎉 I conti sono in pari! Nessuno deve dare soldi a nessuno.")
-            
-    else:
-        st.info("Nessuna spesa registrata finora.")
+            st.success("🎉 I conti sono perfettamente in pareggio! Nessuno deve soldi a nessuno.")
 
 with tab_statistiche:
     st.header("📊 Statistiche Spese")
