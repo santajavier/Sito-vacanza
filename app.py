@@ -266,10 +266,16 @@ with tab_spese:
         # Saldo Matematico: Anticipato (Credito) - Consumato (Debito) + Rimborsi in uscita (Credito verso il gruppo) - Rimborsi in entrata (Debito saldato)
         saldo_finale = tot_anticipato - tot_consumato + tot_rimborsi_out - tot_rimborsi_in
         
+        # PRIMA RIGA: Metriche principali
         col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
         col_kpi1.metric("🛒 Spesa Effettiva", f"{tot_consumato:.2f} €", help="La tua quota di consumo reale.")
         col_kpi2.metric("💳 Hai Anticipato", f"{tot_anticipato:.2f} €", help="Soldi messi di tasca tua per il gruppo.")
         col_kpi3.metric("⚖️ Saldo Attuale", f"{saldo_finale:.2f} €", delta="In Credito" if saldo_finale > 0.01 else ("In Debito" if saldo_finale < -0.01 else "In Pari"), delta_color="normal" if saldo_finale >= 0 else "inverse")
+
+        # SECONDA RIGA: Rimborsi
+        col_kpi4, col_kpi5 = st.columns(2)
+        col_kpi4.metric("📤 Rimborsi Inviati", f"{tot_rimborsi_out:.2f} €", help="Soldi che hai già restituito agli altri.")
+        col_kpi5.metric("📥 Rimborsi Ricevuti", f"{tot_rimborsi_in:.2f} €", help="Soldi che ti sono stati restituiti dal gruppo.")
 
         st.write("") # Spazio
         
