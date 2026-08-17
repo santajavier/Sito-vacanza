@@ -12,6 +12,9 @@ password_accesso = config["PASSWORD_ACCESSO"]
 master_password = config["MASTER_PASSWORD"]
 partecipanti = config["PARTECIPANTI"]
 
+# Recuperiamo la lista dei link dalla sua sezione dedicata
+link_paypal = st.secrets["paypal"]
+
 # 2. Impostazioni pagina usando il titolo preso dalla cassaforte
 st.set_page_config(page_title=titolo_app, page_icon="✈️", layout="centered")
 st.title(titolo_app)
@@ -692,20 +695,43 @@ with tab_bilanci:
         # --- BOX GIALLI PERSONALIZZATI PER LE TRANSAZIONI ---
         if transazioni:
             for t in transazioni:
-                testo_transazione = f"{t['Da']} deve dare {t['Importo']:.2f} € a {t['A']}"
+                debitore = t['Da']
+                creditore = t['A']
+                importo = t['Importo']
                 
-                # Creiamo un div HTML con sfondo giallo chiaro e testo giallo scuro/arancio
+                testo_transazione = f"{debitore} deve dare {importo:.2f} € a {creditore}"
+                
+                # Prepariamo il pulsante PayPal
+                link_html = ""
+                # Controlliamo se il creditore è nel dizionario e ha un link valido inserito
+                if creditore in link_paypal and link_paypal[creditore].startswith("http"):
+                    # PayPal usa il punto per i decimali, formattiamo l'importo correttamente in inglese
+                    importo_formattato = f"{importo:.2f}".replace(",", ".")
+                    url_pagamento = f"{link_paypal[creditore]}/{importo_formattato}"
+                    
+                    link_html = f"""
+                    <br>
+                    <a href='{url_pagamento}' target='_blank' 
+                       style='display: inline-block; margin-top: 12px; padding: 8px 16px; 
+                              background-color: #0070ba; color: white; text-decoration: none; 
+                              border-radius: 6px; font-size: 14px; font-weight: normal;'>
+                        💸 Paga {importo:.2f} € con PayPal
+                    </a>
+                    """
+                
+                # Creiamo il box HTML con il pulsante incorporato (se esiste)
                 box_giallo = f"""
-                <div style="background-color: #fff9c4; color: #b7950b; padding: 12px; 
-                            border-radius: 8px; margin-bottom: 8px; font-weight: bold; 
+                <div style="background-color: #fff9c4; color: #b7950b; padding: 16px; 
+                            border-radius: 8px; margin-bottom: 12px; font-weight: bold; 
                             border: 1px solid #f1c40f; text-align: center; font-size: 16px;">
                     🔄 {testo_transazione}
+                    {link_html}
                 </div>
                 """
                 st.markdown(box_giallo, unsafe_allow_html=True)
         else:
             st.success("🎉 I conti sono perfettamente in pareggio! Nessuno deve soldi a nessuno.")
-
+        
 with tab_statistiche:
     st.header("📊 Statistiche Spese")
     
