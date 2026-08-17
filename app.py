@@ -705,18 +705,20 @@ with tab_bilanci:
                 link_html = ""
                 if creditore in link_paypal and link_paypal[creditore].startswith("http"):
                     importo_formattato = f"{importo:.2f}".replace(",", ".")
-                    url_pagamento = f"{link_paypal[creditore]}/{importo_formattato}EUR"
                     
-                    # HTML compresso su una sola riga per evitare che Markdown lo interpreti come codice
+                    # Trasformiamo il link corto nel link esteso per aggirare il bug dell'app mobile
+                    url_base = link_paypal[creditore].replace("paypal.me", "paypal.com/paypalme")
+                    url_pagamento = f"{url_base}/{importo_formattato}"
+                    
+                    # HTML compresso su una sola riga
                     link_html = f"<br><a href='{url_pagamento}' target='_blank' style='display: inline-block; margin-top: 12px; padding: 8px 16px; background-color: #0070ba; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: normal;'>💸 Paga {importo:.2f} € con PayPal</a>"
                 
-                # Anche il box principale è ora su una singola riga
                 box_giallo = f"<div style='background-color: #fff9c4; color: #b7950b; padding: 16px; border-radius: 8px; margin-bottom: 12px; font-weight: bold; border: 1px solid #f1c40f; text-align: center; font-size: 16px;'>🔄 {testo_transazione}{link_html}</div>"
                 
                 st.markdown(box_giallo, unsafe_allow_html=True)
         else:
             st.success("🎉 I conti sono perfettamente in pareggio! Nessuno deve soldi a nessuno.")
-        
+            
 with tab_statistiche:
     st.header("📊 Statistiche Spese")
     
