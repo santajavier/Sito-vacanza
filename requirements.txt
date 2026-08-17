@@ -2,3 +2,4 @@ streamlit
 pandas
 st-gsheets-connection
 plotly==5.22.0
+fpdf
