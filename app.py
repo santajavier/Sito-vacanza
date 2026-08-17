@@ -526,7 +526,7 @@ with tab_spese:
                 if st.button("Salva Modifiche", key=f"btn_salva_mod_{indice_mod}"):
                     if pwd_mod == master_password:
                         # Riscriviamo i dati aggiornati
-                        df.at[indice_mod, "Pagante"] = nuovo_stringa_paganti
+                        df.at[indice_mod, "Pagante"] = nuova_stringa_paganti
                         df.at[indice_mod, "Importo"] = nuovo_importo
                         df.at[indice_mod, "Causale"] = nuova_causale
                         if "Categoria" in df.columns:
