@@ -135,7 +135,7 @@ with tab_spese:
 
                 nuova_spesa = pd.DataFrame([{
                     "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Pagante": pagante,
+                    "Pagante": stringa_paganti,
                     "Importo": nuovo_importo,
                     "Causale": causale,
                     "Partecipanti": stringa_partecipanti,
