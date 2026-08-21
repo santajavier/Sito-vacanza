@@ -681,178 +681,99 @@ with tab_spese:
                         st.error("❌ Master Password errata!")
     
 with tab_bilanci:
-    st.header("⚖️ Bilancio Finale: Chi deve a chi")
-    
-    if not df.empty:
-        # 1. Inizializziamo il "conto in banca" di tutti a zero
-        bilanci = {p: 0.0 for p in partecipanti}
-        
-        # 2. CALCOLO DEI SALDI PERSONALI (Crediti - Debiti)
-        for index, riga in df.iterrows():
-            importo_totale = float(riga["Importo"])
+            st.subheader("🤝 Situazione Debiti e Crediti")
+            st.write("Seleziona il tuo nome per vedere nel dettaglio a chi devi soldi e da chi ne avanzi.")
             
-            # --- A. GESTIONE CREDITI (Chi ha messo i soldi = +) ---
-            paganti_str = str(riga["Pagante"])
-            if ":" in paganti_str:
-                # Pagamento con quote personalizzate
-                for voce in paganti_str.split(","):
-                    if ":" in voce:
-                        nome, quota = voce.split(":")
-                        nome_pulito = nome.strip()
-                        if nome_pulito in bilanci:
-                            bilanci[nome_pulito] += float(quota)
-            else:
-                # Pagamento in parti uguali tra chi ha anticipato
-                lista_paganti = [n.strip() for n in paganti_str.split(",") if n.strip()]
-                num_paganti = len(lista_paganti)
-                
-                if num_paganti > 0:
-                    imp_cents = int(round(importo_totale * 100))
-                    quota_base_cents = imp_cents // num_paganti
-                    resto_cents = imp_cents % num_paganti
-                    
-                    for i, p in enumerate(lista_paganti):
-                        centesimi_extra = 1 if i < resto_cents else 0
-                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
-                        if p in bilanci:
-                            bilanci[p] += quota_finale
-                            
-            # --- B. GESTIONE DEBITI (Chi ha usufruito della spesa = -) ---
-            partecipanti_str = str(riga["Partecipanti"])
-            if ":" in partecipanti_str:
-                # Consumo con quote personalizzate
-                for voce in partecipanti_str.split(","):
-                    if ":" in voce:
-                        nome, quota = voce.split(":")
-                        nome_pulito = nome.strip()
-                        if nome_pulito in bilanci:
-                            bilanci[nome_pulito] -= float(quota)
-            else:
-                # Consumo in parti uguali (alla romana)
-                lista_debitori = [n.strip() for n in partecipanti_str.split(",") if n.strip()]
-                num_debitori = len(lista_debitori)
-                
-                if num_debitori > 0:
-                    imp_cents = int(round(importo_totale * 100))
-                    quota_base_cents = imp_cents // num_debitori
-                    resto_cents = imp_cents % num_debitori
-                    
-                    for i, p in enumerate(lista_debitori):
-                        centesimi_extra = 1 if i < resto_cents else 0
-                        quota_finale = (quota_base_cents + centesimi_extra) / 100.0
-                        if p in bilanci:
-                            bilanci[p] -= quota_finale
-                            
-        # Arrotondiamo tutto a 2 decimali per evitare errori di virgola mobile
-        for p in bilanci:
-            bilanci[p] = round(bilanci[p], 2)
+            # --- 1. MOTORE DI CALCOLO 1-a-1 ---
+            bilanci = {p: {altri: 0.0 for altri in partecipanti if altri != p} for p in partecipanti}
 
-        # 3. MOSTRA I SALDI ATTUALI IN UN GRAFICO
-        st.subheader("📊 Situazione Attuale")
-        df_bilanci = pd.DataFrame(list(bilanci.items()), columns=["Partecipante", "Saldo"])
-        
-        # --- ORDINA DAL PIÙ IN CREDITO AL PIÙ IN DEBITO ---
-        df_bilanci = df_bilanci.sort_values(by="Saldo", ascending=False).reset_index(drop=True)
-        
-        # Grafico a barre
-        df_bilanci["Colore"] = df_bilanci["Saldo"].apply(lambda x: "Credito" if x > 0 else ("Debito" if x < 0 else "Pari"))
-        fig_saldi = px.bar(
-            df_bilanci, 
-            x="Partecipante", 
-            y="Saldo", 
-            color="Colore",
-            color_discrete_map={"Credito": "#2ecc71", "Debito": "#e74c3c", "Pari": "#95a5a6"},
-            text="Saldo"
-        )
-        fig_saldi.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis_title="Euro (€)", showlegend=False)
-        
-        # --- AUMENTA LA DIMENSIONE DEL FONT DEI NUMERI (textfont_size=16) ---
-        fig_saldi.update_traces(texttemplate='%{text:.2f} €', textposition='outside', textfont_size=16)
-        
-        st.plotly_chart(fig_saldi, use_container_width=True)
-
-        # --- NUOVA TABELLA CON COLORI DINAMICI (ORA ORDINATA) ---
-        st.write("📋 **Dettaglio Saldi**")
-        
-        def colora_saldo(valore):
-            """Applica il testo verde se positivo, rosso se negativo"""
-            if valore > 0.01:
-                colore = '#2ecc71' # Verde
-            elif valore < -0.01:
-                colore = '#e74c3c' # Rosso
-            else:
-                colore = '#ffffff' # Bianco/Neutro
-            return f'color: {colore}; font-weight: bold;'
-            
-        # Mostriamo la tabella applicando lo stile solo alla colonna 'Saldo'
-        st.dataframe(
-            df_bilanci[["Partecipante", "Saldo"]].style
-            .map(colora_saldo, subset=["Saldo"])
-            .format({"Saldo": "{:.2f} €"}),
-            use_container_width=True
-        )
-
-        st.divider()
-
-        # 4. ALGORITMO DI RISOLUZIONE DEI DEBITI (Chi paga chi)
-        st.subheader("💸 Come pareggiare i conti")
-        
-        debitori = [{"nome": k, "importo": -v} for k, v in bilanci.items() if v < -0.01]
-        creditori = [{"nome": k, "importo": v} for k, v in bilanci.items() if v > 0.01]
-        
-        debitori = sorted(debitori, key=lambda x: x["importo"], reverse=True)
-        creditori = sorted(creditori, key=lambda x: x["importo"], reverse=True)
-        
-        transazioni = []
-        i, j = 0, 0
-        
-        while i < len(debitori) and j < len(creditori):
-            deb = debitori[i]
-            cred = creditori[j]
-            
-            importo_transazione = min(deb["importo"], cred["importo"])
-            
-            transazioni.append({
-                "Da": deb["nome"],
-                "A": cred["nome"],
-                "Importo": round(importo_transazione, 2)
-            })
-            
-            deb["importo"] -= importo_transazione
-            cred["importo"] -= importo_transazione
-            
-            if deb["importo"] < 0.01:
-                i += 1
-            if cred["importo"] < 0.01:
-                j += 1
-                
-        # --- BOX GIALLI PERSONALIZZATI PER LE TRANSAZIONI ---
-        if transazioni:
-            for t in transazioni:
-                debitore = t['Da']
-                creditore = t['A']
-                importo = t['Importo']
-                
-                testo_transazione = f"{debitore} deve dare {importo:.2f} € a {creditore}"
-                
-                # Prepariamo il pulsante PayPal
-                link_html = ""
-                if creditore in link_paypal and link_paypal[creditore].startswith("http"):
-                    importo_formattato = f"{importo:.2f}".replace(",", ".")
+            if not df.empty:
+                for index, riga in df.iterrows():
+                    importo_totale = float(riga["Importo"])
+                    if importo_totale <= 0:
+                        continue
                     
-                    # Trasformiamo il link corto nel link esteso per aggirare il bug dell'app mobile
-                    url_base = link_paypal[creditore].replace("paypal.me", "paypal.com/paypalme")
-                    url_pagamento = f"{url_base}/{importo_formattato}"
-                    
-                    # HTML compresso su una sola riga
-                    link_html = f"<br><a href='{url_pagamento}' target='_blank' style='display: inline-block; margin-top: 12px; padding: 8px 16px; background-color: #0070ba; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: normal;'>💸 Paga {importo:.2f} € con PayPal</a>"
-                
-                box_giallo = f"<div style='background-color: #fff9c4; color: #b7950b; padding: 16px; border-radius: 8px; margin-bottom: 12px; font-weight: bold; border: 1px solid #f1c40f; text-align: center; font-size: 16px;'>🔄 {testo_transazione}{link_html}</div>"
-                
-                st.markdown(box_giallo, unsafe_allow_html=True)
-        else:
-            st.success("🎉 I conti sono perfettamente in pareggio! Nessuno deve soldi a nessuno.")
+                    # A. Dizionario di chi ha pagato e quanto
+                    paganti_dict = {}
+                    paganti_str = str(riga["Pagante"])
+                    if ":" in paganti_str:
+                        for voce in paganti_str.split(","):
+                            if ":" in voce:
+                                nome, q = voce.split(":")
+                                paganti_dict[nome.strip()] = float(q)
+                    else:
+                        lista_paganti = [n.strip() for n in paganti_str.split(",") if n.strip()]
+                        for p in lista_paganti:
+                            paganti_dict[p] = importo_totale / len(lista_paganti)
+
+                    # B. Dizionario di chi ha consumato e quanto
+                    consumi_dict = {}
+                    partecipanti_str = str(riga["Partecipanti"])
+                    if ":" in partecipanti_str:
+                        for voce in partecipanti_str.split(","):
+                            if ":" in voce:
+                                nome, q = voce.split(":")
+                                consumi_dict[nome.strip()] = float(q)
+                    else:
+                        lista_debitori = [n.strip() for n in partecipanti_str.split(",") if n.strip()]
+                        for d in lista_debitori:
+                            consumi_dict[d] = importo_totale / len(lista_debitori)
+
+                    # C. Distribuzione proporzionale del debito verso i creditori reali
+                    for debitore, quota_deb in consumi_dict.items():
+                        for creditore, quota_cred in paganti_dict.items():
+                            if debitore != creditore:
+                                # Il debitore deve rimborsare il creditore in base a quanta % della spesa totale ha anticipato quest'ultimo
+                                frazione_pagata = quota_cred / importo_totale
+                                debito_diretto = quota_deb * frazione_pagata
+                                
+                                bilanci[debitore][creditore] += debito_diretto
+                                bilanci[creditore][debitore] -= debito_diretto
+
+            # --- 2. INTERFACCIA GRAFICA ---
+            # Filtro partecipante
+            persona = st.selectbox("Mostra bilancio di:", partecipanti, key="filtro_bilancio_coppie")
             
+            st.divider()
+            
+            debiti = []
+            crediti = []
+            
+            # Smistiamo i saldi della persona selezionata
+            for altro, saldo in bilanci[persona].items():
+                if saldo > 0.01:
+                    debiti.append((altro, saldo))
+                elif saldo < -0.01:
+                    crediti.append((altro, abs(saldo)))
+                    
+            col_deb, col_cred = st.columns(2)
+            
+            with col_deb:
+                st.markdown(f"#### 🔴 {persona} deve dare a:")
+                if debiti:
+                    for creditore, importo in debiti:
+                        # Ricreiamo il link paypal se presente
+                        link_html = ""
+                        if creditore in link_paypal and link_paypal[creditore].startswith("http"):
+                            importo_formattato = f"{importo:.2f}".replace(",", ".")
+                            url_base = link_paypal[creditore].replace("paypal.me", "paypal.com/paypalme")
+                            url_pagamento = f"{url_base}/{importo_formattato}"
+                            link_html = f"<br><a href='{url_pagamento}' target='_blank' style='display: inline-block; margin-top: 10px; padding: 6px 12px; background-color: #0070ba; color: white; text-decoration: none; border-radius: 6px; font-size: 13px;'>💸 Paga con PayPal</a>"
+                        
+                        box_debito = f"<div style='background-color: #ffebee; color: #b71c1c; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ef9a9a; text-align: center;'><b>{creditore}</b><br><span style='font-size: 18px;'>{importo:.2f} €</span>{link_html}</div>"
+                        st.markdown(box_debito, unsafe_allow_html=True)
+                else:
+                    st.success("Nessun debito in sospeso!")
+
+            with col_cred:
+                st.markdown(f"#### 🟢 {persona} deve ricevere da:")
+                if crediti:
+                    for debitore, importo in crediti:
+                        box_credito = f"<div style='background-color: #e8f5e9; color: #1b5e20; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #a5d6a7; text-align: center;'><b>{debitore}</b><br><span style='font-size: 18px;'>{importo:.2f} €</span></div>"
+                        st.markdown(box_credito, unsafe_allow_html=True)
+                else:
+                    st.info("Nessun credito da riscuotere.")
+
 with tab_statistiche:
     st.header("📊 Statistiche Spese")
     
